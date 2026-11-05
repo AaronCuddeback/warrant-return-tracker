@@ -1,0 +1,10 @@
+node_modules/
+build/
+release/
+tests/e2e/out/
+src/renderer/public/pdfjs/
+*.log
+
+# Agency originals and personal templates contain an officer's signature image - never commit
+original-templates/
+office-templates/

@@ -1,0 +1,108 @@
+{
+  "name": "warrant-return-tracker",
+  "productName": "Warrant Return Tracker",
+  "version": "2.0.0",
+  "description": "Track search warrants, due dates and returns; generate court documents from agency templates.",
+  "author": "Warrant Return Tracker",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "build/main.js",
+  "scripts": {
+    "build:renderer": "vite build",
+    "build:main": "node scripts/build-main.mjs",
+    "build:icons": "node scripts/make-icons.mjs",
+    "build:templates": "node scripts/make-templates.mjs",
+    "build": "npm run build:main && npm run build:renderer",
+    "start": "npm run build && electron .",
+    "dev": "node scripts/dev.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "dist": "npm run build && electron-builder --win",
+    "dist:dir": "npm run build && electron-builder --win dir"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "@types/node": "^26.6.6",
+    "@types/nodemailer": "^8.0.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/sql.js": "^1.4.11",
+    "@vitejs/plugin-react": "^6.2.1",
+    "angular-expressions": "^1.7.1",
+    "docx-preview": "^0.4.1",
+    "docxtemplater": "^3.71.1",
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
+    "jszip": "^3.10.2",
+    "lucide-react": "^1.69.0",
+    "nodemailer": "^10.3.1",
+    "pdfjs-dist": "^6.5.438",
+    "pizzip": "^3.3.0",
+    "playwright-core": "^1.65.0",
+    "png-to-ico": "^3.0.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "sql.js": "^1.15.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.6",
+    "vitest": "^5.1.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "electron-winstaller@5.4.0": true
+  },
+  "build": {
+    "appId": "org.wrt.warrantreturntracker",
+    "productName": "Warrant Return Tracker",
+    "copyright": "For official law enforcement use",
+    "directories": {
+      "output": "release",
+      "buildResources": "resources"
+    },
+    "files": [
+      "build/**/*",
+      "package.json",
+      "!build/**/*.map"
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "nodeGypRebuild": false,
+    "electronLanguages": [
+      "en-US"
+    ],
+    "win": {
+      "icon": "resources/icons/icon.ico",
+      "requestedExecutionLevel": "asInvoker",
+      "target": [
+        "dir",
+        "portable",
+        "nsis"
+      ],
+      "legalTrademarks": ""
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Warrant Return Tracker",
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "WarrantReturnTracker-Setup-${version}.exe"
+    },
+    "portable": {
+      "artifactName": "WarrantReturnTracker-Portable-${version}.exe"
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "grantFileProtocolExtraPrivileges": false
+    }
+  }
+}
