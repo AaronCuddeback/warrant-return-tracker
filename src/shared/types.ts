@@ -162,6 +162,24 @@ export interface TemplateInspection {
   tags: { tag: string; status: 'known' | 'mapped' | 'numeric' | 'unknown' | 'loop'; field?: string }[];
 }
 
+/** Reusable "property taken" text (canned inventory language). */
+export interface SavedPhrase {
+  id: string;
+  name: string;
+  text: string;
+  /** Warrant types for which the return wizard suggests this text. */
+  types: WarrantType[];
+}
+
+export const DEFAULT_PHRASES: SavedPhrase[] = [
+  {
+    id: 'provider-data',
+    name: 'Electronic data from service provider',
+    text: 'Digital data, records, and information associated with the target account(s), identifier(s), device(s), telephone number(s), and/or IP address(es), including account and subscriber information, communications, media, files, logs, device and connection information, location data, metadata, and other electronic records produced by the service provider pursuant to the search warrant.',
+    types: ['provider'],
+  },
+];
+
 export interface DueRule {
   id: string;
   name: string;
@@ -222,6 +240,7 @@ export interface Settings {
     useByDefault: boolean;
     updatedAt: string | null;
   };
+  phrases: SavedPhrase[];
   dueRules: DueRule[];
   holidays: ISODate[];
   backup: {

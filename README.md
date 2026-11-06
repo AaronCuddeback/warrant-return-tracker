@@ -21,6 +21,7 @@ Version 2 is a full rebuild of v1 (whose source was lost). It keeps every v1 fea
 | Data | Single DB file | Daily snapshots, full backup/restore, portable mode |
 | Signature | Scanned image baked into one template | Draw or import once; inserted at `{signature}` in any template (2.1) |
 | Amendments | - | Record amendments with signed copy, due-date change and added scope (2.1) |
+| Inventory | Typed every time | Saved text library with standard provider-data language, suggested by warrant type (2.2) |
 
 ## Using it
 
@@ -35,6 +36,10 @@ Shortcuts: `Ctrl+K` search everything, `Ctrl+N` new warrant, `Ctrl+L` lock.
 ## Signature
 
 **Settings > Signature**: draw your signature (mouse, touchpad, touchscreen or pen) or import a photo/scan - the paper background is removed and the ink can be recolored black or blue. It is stored encrypted with Windows DPAPI for your Windows account only (not included in backups) and placed wherever a template has a `{signature}` tag; the built-in return has one above the officer's signature line. The return wizard has a "Sign with my saved signature" switch per document, and every signed document is recorded in the audit log.
+
+## Saved text (canned inventory language)
+
+The return wizard's **Property taken** step has a **Saved text** menu of reusable wording. It ships with standard language for electronic data produced by a service provider, which is suggested automatically on service-provider warrants and added as an inventory item with one click. Save any item's wording with its bookmark button, and manage the list (and which warrant types each phrase is suggested for) in **Settings > Saved text**.
 
 ## Amendments
 

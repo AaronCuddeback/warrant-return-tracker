@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react';
-import { User, Bell, CalendarClock, FileOutput, ShieldCheck, Monitor, Database, Info, Plus, Trash2, Send, ImagePlus, KeyRound, FolderOpen, Save, PenLine } from 'lucide-react';
+import { User, Bell, CalendarClock, FileOutput, ShieldCheck, Monitor, Database, Info, Plus, Trash2, Send, ImagePlus, KeyRound, FolderOpen, Save, PenLine, Library, RotateCcw } from 'lucide-react';
 import { SignaturePad } from '../components/SignaturePad';
 import { api } from '../lib/api';
 import { navigate } from '../lib/router';
 import { useStore } from '../lib/store';
-import { Button, Field, Input, Select, Toggle, confirmDialog } from '../components/ui';
+import { Button, Field, Input, Select, Textarea, Toggle, confirmDialog } from '../components/ui';
 import { formatDate, isISODate } from '../../shared/dates';
-import type { Settings, NotifyMethod } from '../../shared/types';
+import { DEFAULT_PHRASES, WARRANT_TYPES, type Settings, type NotifyMethod } from '../../shared/types';
 
 const SECTIONS = [
   { id: 'profile', label: 'Officer & agency', icon: <User size={16} /> },
   { id: 'signature', label: 'Signature', icon: <PenLine size={16} /> },
   { id: 'notifications', label: 'Reminders', icon: <Bell size={16} /> },
+  { id: 'phrases', label: 'Saved text', icon: <Library size={16} /> },
   { id: 'deadlines', label: 'Deadline rules', icon: <CalendarClock size={16} /> },
   { id: 'documents', label: 'Documents', icon: <FileOutput size={16} /> },
   { id: 'security', label: 'Security', icon: <ShieldCheck size={16} /> },
@@ -60,6 +61,7 @@ export function SettingsPage({ section = 'profile' }: { section?: string }) {
           {section === 'profile' && <ProfileSection s={s} up={up} />}
           {section === 'signature' && <SignatureSection s={s} up={up} />}
           {section === 'notifications' && <NotifySection s={s} up={up} dirty={dirty} save={save} />}
+          {section === 'phrases' && <PhrasesSection s={s} up={up} />}
           {section === 'deadlines' && <DeadlineSection s={s} up={up} />}
           {section === 'documents' && <DocsSection s={s} up={up} />}
           {section === 'security' && <SecuritySection s={s} up={up} />}
@@ -222,6 +224,49 @@ function NotifySection({ s, up, dirty, save }: SecProps & { dirty: boolean; save
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function PhrasesSection({ s, up }: SecProps) {
+  const missingDefaults = DEFAULT_PHRASES.filter((d) => !s.phrases.some((p) => p.id === d.id));
+  return (
+    <div className="col" style={{ gap: 18 }}>
+      <div>
+        <h3 style={{ margin: '0 0 4px' }}>Saved text</h3>
+        <div className="muted small">Reusable wording for "property taken" in the return. Pick it from <b>Saved text</b> in the return wizard; it is also suggested automatically for the warrant types you tick. You can save new wording from any inventory row with the bookmark button.</div>
+      </div>
+      {s.phrases.length === 0 && <div className="muted small">No saved text.</div>}
+      {s.phrases.map((p, i) => (
+        <div key={p.id} className="card pad col" style={{ gap: 10, background: 'var(--panel-2)' }}>
+          <div className="row">
+            <Input value={p.name} onChange={(e) => up((d) => { d.phrases[i].name = e.target.value; })} placeholder="Short name" style={{ fontWeight: 650 }} />
+            <Button variant="ghost" iconOnly icon={<Trash2 size={15} />} title="Delete" onClick={async () => {
+              if (await confirmDialog({ title: `Delete "${p.name}"?`, body: 'Returns already generated are not affected.', ok: 'Delete', danger: true })) up((d) => { d.phrases.splice(i, 1); });
+            }} />
+          </div>
+          <Textarea rows={4} value={p.text} onChange={(e) => up((d) => { d.phrases[i].text = e.target.value; })} />
+          <div className="row wrap" style={{ gap: 6 }}>
+            <span className="muted small">Suggest for:</span>
+            {WARRANT_TYPES.map((t) => {
+              const on = p.types.includes(t.value);
+              return (
+                <button key={t.value} className={`badge ${on ? 'violet' : ''}`} style={{ border: 0, cursor: 'pointer' }}
+                  onClick={() => up((d) => { const ty = d.phrases[i].types; d.phrases[i].types = on ? ty.filter((x) => x !== t.value) : [...ty, t.value]; })}>
+                  {on ? '✓ ' : ''}{t.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      <div className="row wrap">
+        <Button icon={<Plus size={15} />} onClick={() => up((d) => { d.phrases.push({ id: `p${Date.now()}`, name: 'New saved text', text: '', types: [] }); })}>Add saved text</Button>
+        {missingDefaults.length > 0 && (
+          <Button variant="ghost" icon={<RotateCcw size={15} />} onClick={() => up((d) => { d.phrases.push(...missingDefaults.map((x) => ({ ...x, types: [...x.types] }))); })}>Restore standard provider-data text</Button>
+        )}
+      </div>
+      <div className="muted tiny">Remember to click Save settings.</div>
     </div>
   );
 }

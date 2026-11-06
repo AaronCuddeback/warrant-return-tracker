@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FileOutput, Plus, Trash2, ClipboardPaste, CheckCircle2, FolderOpen, ExternalLink, ChevronLeft, ChevronRight, Megaphone, ListChecks, AlignLeft, PenLine } from 'lucide-react';
+import { FileOutput, Plus, Trash2, ClipboardPaste, CheckCircle2, FolderOpen, ExternalLink, ChevronLeft, ChevronRight, Megaphone, ListChecks, AlignLeft, PenLine, Library, BookmarkPlus, Sparkles } from 'lucide-react';
 import { navigate } from '../lib/router';
 import { api } from '../lib/api';
 import { useData, useStore } from '../lib/store';
-import { Button, Field, Input, Modal, Select, Textarea, Toggle, Seg } from '../components/ui';
+import { Button, Field, Input, Modal, Select, Textarea, Toggle, Seg, confirmDialog } from '../components/ui';
 import { DocxViewer } from '../components/Viewers';
 import { isISODate, todayISO } from '../../shared/dates';
-import type { ReturnItem, TemplateKind, Warrant, WarrantInput } from '../../shared/types';
+import type { ReturnItem, SavedPhrase, TemplateKind, Warrant, WarrantInput } from '../../shared/types';
 
 export function GenerateWizard({ warrant, kind, onClose }: { warrant: Warrant; kind: TemplateKind; onClose: () => void }) {
-  const { settings, toast } = useStore();
+  const { settings, toast, saveSettings } = useStore();
+  const [phraseMenu, setPhraseMenu] = useState(false);
   const { data: templates } = useData(() => api.listTemplates());
   const choices = useMemo(() => (templates ?? []).filter((t) => t.kind === kind), [templates, kind]);
   const [templateId, setTemplateId] = useState('');
@@ -82,6 +83,41 @@ export function GenerateWizard({ warrant, kind, onClose }: { warrant: Warrant; k
     setDone({ filePath: r.data?.filePath, sha256: r.data!.sha256 });
   };
 
+  const phrases = settings?.phrases ?? [];
+  const norm = (t: string) => t.replace(/\s+/g, ' ').trim().toLowerCase();
+  const inUse = (p: SavedPhrase) =>
+    items.some((i) => norm(i.description) === norm(p.text)) || norm(patch.itemsText ?? '').includes(norm(p.text));
+  const suggestions = phrases.filter((p) => p.types.includes(warrant.warrantType) && !inUse(p));
+
+  const insertPhrase = (p: SavedPhrase) => {
+    setPhraseMenu(false);
+    if (mode === 'list') {
+      const kept = items.filter((i) => i.description.trim() || i.qty.trim());
+      setItems([...kept, { qty: '', description: p.text, locationFound: '' }]);
+    } else {
+      const cur = (patch.itemsText ?? '').trimEnd();
+      setPatch({ ...patch, itemsText: cur ? `${cur}\n${p.text}` : p.text });
+    }
+    toast('ok', `Added "${p.name}"`);
+  };
+
+  const savePhrase = async (text: string) => {
+    if (!settings || !text.trim()) return;
+    if (phrases.some((p) => norm(p.text) === norm(text))) {
+      toast('info', 'That text is already in your saved text.');
+      return;
+    }
+    const name = await confirmDialog({
+      title: 'Save as reusable text',
+      body: <>This wording will be available from <b>Saved text</b> on every return. It is suggested automatically for this warrant type.</>,
+      ok: 'Save',
+      input: { label: 'Short name', placeholder: 'e.g. Phone extraction - full file system', required: true },
+    });
+    if (typeof name !== 'string' || !name.trim()) return;
+    const next: SavedPhrase = { id: `p${Date.now()}`, name: name.trim(), text: text.trim(), types: [warrant.warrantType] };
+    if (await saveSettings({ ...settings, phrases: [...phrases, next] })) toast('ok', `Saved "${next.name}"`);
+  };
+
   const pasteList = async () => {
     const text = await navigator.clipboard.readText().catch(() => '');
     if (!text.trim()) {
@@ -143,29 +179,75 @@ export function GenerateWizard({ warrant, kind, onClose }: { warrant: Warrant; k
 
           {kind === 'return' && step === 1 && (
             <div className="col" style={{ gap: 12 }}>
-              <div className="row">
+              <div className="row" style={{ position: 'relative' }}>
                 <Seg value={mode} onChange={setMode} options={[{ value: 'list', label: <><ListChecks size={14} /> Itemized</> }, { value: 'text', label: <><AlignLeft size={14} /> Free text</> }]} />
                 <div className="spacer" />
+                <div>
+                  <Button size="sm" icon={<Library size={14} />} onClick={() => setPhraseMenu((v) => !v)}>Saved text</Button>
+                  {phraseMenu && (
+                    <div className="phrase-menu" onMouseLeave={() => setPhraseMenu(false)}>
+                      {phrases.length === 0 && <div className="muted small" style={{ padding: 10 }}>No saved text yet. Use the bookmark on an item to save its wording.</div>}
+                      {phrases.map((p) => (
+                        <button key={p.id} className="phrase-item" onClick={() => insertPhrase(p)} disabled={inUse(p)}>
+                          <b>{p.name}</b>{inUse(p) && <span className="badge green" style={{ marginLeft: 6 }}>added</span>}
+                          <span className="muted tiny phrase-preview">{p.text}</span>
+                        </button>
+                      ))}
+                      <div className="muted tiny" style={{ padding: '8px 10px', borderTop: '1px solid var(--border)' }}>Edit saved text in Settings &gt; Saved text.</div>
+                    </div>
+                  )}
+                </div>
                 {mode === 'list' && <Button size="sm" icon={<ClipboardPaste size={14} />} onClick={pasteList}>Paste list</Button>}
               </div>
+              {suggestions.length > 0 && (
+                <div className="callout violet small">
+                  <Sparkles size={16} color="var(--violet)" style={{ flex: 'none' }} />
+                  <div className="grow col" style={{ gap: 6 }}>
+                    <span>Standard language for this kind of warrant:</span>
+                    {suggestions.map((p) => (
+                      <div key={p.id} className="row" style={{ alignItems: 'flex-start' }}>
+                        <span className="grow"><b>{p.name}</b><span className="muted phrase-preview">{p.text}</span></span>
+                        <Button size="sm" variant="primary" icon={<Plus size={13} />} onClick={() => insertPhrase(p)}>Add</Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {mode === 'list' ? (
                 <>
                   <div className="items">
-                    <div className="item-row tiny muted" style={{ fontWeight: 700 }}><span /> <span>Qty</span><span>Description</span><span>Where found</span><span /></div>
+                    <div className="item-row tiny muted" style={{ fontWeight: 700 }}><span /> <span>Qty</span><span>Description · where found</span><span /></div>
                     {items.map((it, i) => (
                       <div key={i} className="item-row">
                         <span className="num">{i + 1}.</span>
                         <Input value={it.qty} placeholder="1" onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))} />
-                        <Input value={it.description} placeholder="Apple iPhone 14 (IMEI...)" autoFocus={i === items.length - 1 && !it.description} onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, description: e.target.value } : x)))}
-                          onKeyDown={(e) => { if (e.key === 'Enter') setItems([...items, { qty: '', description: '', locationFound: '' }]); }} />
-                        <Input value={it.locationFound} placeholder="bedroom" onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, locationFound: e.target.value } : x)))} />
-                        <Button size="sm" variant="ghost" iconOnly icon={<Trash2 size={14} />} onClick={() => setItems(items.filter((_, j) => j !== i))} />
+                        <div className="col" style={{ gap: 5 }}>
+                        <Textarea
+                          className="item-desc"
+                          rows={Math.max(1, Math.min(8, Math.ceil(it.description.length / 58)))}
+                          value={it.description}
+                          placeholder="Apple iPhone 14 (IMEI...)"
+                          autoFocus={i === items.length - 1 && !it.description}
+                          onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, description: e.target.value } : x)))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              setItems([...items, { qty: '', description: '', locationFound: '' }]);
+                            }
+                          }}
+                        />
+                        <Input className="item-loc" value={it.locationFound} placeholder={warrant.warrantType === 'provider' ? 'Where found / how produced (optional), e.g. provider portal' : 'Where found (optional), e.g. master bedroom'} onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, locationFound: e.target.value } : x)))} />
+                        </div>
+                        <span className="col" style={{ gap: 2 }}>
+                          <Button size="sm" variant="ghost" iconOnly icon={<Trash2 size={14} />} title="Remove" onClick={() => setItems(items.filter((_, j) => j !== i))} />
+                          {it.description.trim().length > 12 && <Button size="sm" variant="ghost" iconOnly icon={<BookmarkPlus size={14} />} title="Save this wording as reusable text" onClick={() => void savePhrase(it.description)} />}
+                        </span>
                       </div>
                     ))}
                   </div>
                   <Button icon={<Plus size={15} />} onClick={() => setItems([...items, { qty: '', description: '', locationFound: '' }])}>Add item</Button>
-                  <div className="muted tiny">Whole-number quantities are written out: "Two (2) digital scales". Press Enter in a description to add the next row. Leave the list empty to print "No property was taken."</div>
-                  <style>{`.wizard .item-row { grid-template-columns: 22px 56px minmax(0,1fr) 110px 28px; }`}</style>
+                  <div className="muted tiny">Whole-number quantities are written out: "Two (2) digital scales". Press Enter in a description to add the next row (Shift+Enter for a new line). Leave the list empty to print "No property was taken."</div>
+                  <style>{`.wizard .item-row { grid-template-columns: 22px 52px minmax(0,1fr) 30px; }`}</style>
                 </>
               ) : (
                 <Field label="Property taken" hint="Printed after 'AND THERE I DISCOVERED:'">

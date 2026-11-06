@@ -1,7 +1,7 @@
 {
   "name": "warrant-return-tracker",
   "productName": "Warrant Return Tracker",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Track search warrants, due dates and returns; generate court documents from agency templates.",
   "author": "Warrant Return Tracker",
   "license": "UNLICENSED",

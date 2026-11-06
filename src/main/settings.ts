@@ -2,7 +2,7 @@ import { safeStorage } from 'electron';
 import { readFileSync, writeFileSync, existsSync, renameSync, unlinkSync } from 'node:fs';
 import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { SETTINGS_FILE, SECRETS_FILE, SIGNATURE_FILE } from './paths';
-import type { Settings } from '../shared/types';
+import { DEFAULT_PHRASES, type Settings } from '../shared/types';
 import { log } from './log';
 
 export function defaultSettings(): Settings {
@@ -52,6 +52,7 @@ export function defaultSettings(): Settings {
       dateFormat: 'MM/DD/YYYY',
     },
     signature: { hasSignature: false, widthInches: 2, useByDefault: true, updatedAt: null },
+    phrases: DEFAULT_PHRASES.map((p) => ({ ...p, types: [...p.types] })),
     dueRules: [
       { id: 'r10', name: '10 days (Cal. Penal Code 1534)', days: 10, dayType: 'calendar' },
       { id: 'r30', name: '30 calendar days', days: 30, dayType: 'calendar' },
