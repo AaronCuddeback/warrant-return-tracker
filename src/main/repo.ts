@@ -13,7 +13,7 @@ import type {
 } from '../shared/types';
 import { daysUntil, todayISO, isISODate, formatDate } from '../shared/dates';
 
-const USER = (() => {
+let USER = (() => {
   try {
     return userInfo().username;
   } catch {
@@ -21,6 +21,10 @@ const USER = (() => {
   }
 })();
 export const currentUser = () => USER;
+/** Development builds only (see main.ts): lets demo captures show a made-up user in the audit log. */
+export function overrideAuditUser(name: string) {
+  USER = name;
+}
 
 const FIELDS: (keyof WarrantInput)[] = [
   'caseNumber', 'warrantNumber', 'warrantType', 'targets', 'judge', 'court', 'signedDate', 'receivedDate',

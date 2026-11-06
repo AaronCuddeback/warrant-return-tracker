@@ -8,7 +8,7 @@ import { ensureBuiltIns } from './templates';
 import { registerIpc, broadcastChanged } from './ipc';
 import { startReminders, stopReminders, checkNow, desktopNotify } from './reminders';
 import { autoBackupIfDue } from './backup';
-import { stats } from './repo';
+import { stats, overrideAuditUser } from './repo';
 import { log } from './log';
 import type { Settings } from '../shared/types';
 
@@ -46,6 +46,7 @@ app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling,Media
 
 // Test harness: isolate the Chromium profile (and the single-instance lock) from a real running copy
 if (!app.isPackaged && process.env.WRT_DATA_DIR) app.setPath('userData', join(process.env.WRT_DATA_DIR, 'electron-profile'));
+if (!app.isPackaged && process.env.WRT_DATA_DIR && process.env.WRT_AUDIT_USER) overrideAuditUser(process.env.WRT_AUDIT_USER);
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();

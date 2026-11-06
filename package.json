@@ -18,7 +18,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "dist": "npm run build && electron-builder --win",
-    "dist:dir": "npm run build && electron-builder --win dir"
+    "dist:dir": "npm run build && electron-builder --win dir",
+    "showcase": "npm run build && node scripts/capture-showcase.mjs"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",

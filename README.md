@@ -1,8 +1,64 @@
-# Warrant Return Tracker 2.0
+# Warrant Return Tracker
 
-Desktop app that tracks search warrants from signature to filed return: deadline reminders, court-ready returns and notices generated from **any agency's own Word templates**, document storage with SHA-256 hashes, and a full audit trail.
+**Track every search warrant from signature to filed return, and generate the court paperwork in seconds.**
 
-Version 2 is a full rebuild of v1 (whose source was lost). It keeps every v1 feature and imports v1 data.
+Built for detectives and forensic examiners: return deadlines and reminders, court-ready returns and CalECPA notices from **your agency's own Word templates**, your signature applied automatically, hashed document storage, and a full audit trail. It runs as a normal Windows program with **no admin rights, no internet and no server**, so it works on locked-down agency computers.
+
+[**Download the latest version**](https://github.com/AaronCuddeback/warrant-return-tracker/releases/latest): Setup EXE (recommended), plain folder zip for strict AppLocker environments, or portable EXE.
+
+![Walkthrough: add a warrant from its PDF, generate a signed return, and review deadlines](docs/walkthrough.gif)
+
+<sub>The walkthrough and screenshots use made-up demo data: a fictional officer, agency, court, judge and cases.</sub>
+
+## Highlights
+
+- **Never miss a return.** Due dates from statute or court-day rules (with holidays), overdue and due-soon queue, desktop/email reminders that catch up after sleep or shutdown, daily digest, calendar export.
+- **Intake from the PDF.** Drop the signed warrant; the details are read for you to confirm. The PDF is stored with the case and SHA-256 hashed.
+- **Returns that are right the first time.** Every date, name, badge, county and court is a merge field, so there is no stale text. Itemized inventory with quantities in words, saved standard language, live preview, signature placed automatically.
+- **Any agency's form.** Import your own `.docx` with simple `{tags}`. Built-in generic California return and PC 1546.2 notification included.
+- **Amendments, documents, audit trail.** Amendments with due-date changes, every document hashed, every action logged; case summary/chain-of-custody PDF and case packet zip.
+- **Made for agency IT.** Per-user install, no native modules, no telemetry, strict sandbox and Electron security fuses, DPAPI-encrypted secrets, optional PIN lock, portable mode, backups.
+
+## Screenshots
+
+<table>
+<tr>
+<td width="50%" valign="top"><a href="docs/screenshots/dashboard.png"><img src="docs/screenshots/dashboard.png" alt="Dashboard"></a><br><b>Dashboard</b><br><sub>Overdue and due-soon warrants first, the next 14 days, CalECPA notices still owed, and recent activity.</sub></td>
+<td width="50%" valign="top"><a href="docs/screenshots/intake.png"><img src="docs/screenshots/intake.png" alt="Drop the signed warrant"></a><br><b>Drop the signed warrant</b><br><sub>Warrant #, case #, judge, signed date, provider and target are read from the PDF and marked in purple for you to verify.</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="docs/screenshots/return-preview.png"><img src="docs/screenshots/return-preview.png" alt="Court-ready return, signed"></a><br><b>Court-ready return, signed</b><br><sub>Live preview of exactly what will be saved, using your agency's own Word template and your stored signature.</sub></td>
+<td width="50%" valign="top"><a href="docs/screenshots/return-property.png"><img src="docs/screenshots/return-property.png" alt="Property taken"></a><br><b>Property taken</b><br><sub>Itemized inventory with quantities written out ("Three (3)"), where found, and one-click standard language.</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="docs/screenshots/return-saved-text.png"><img src="docs/screenshots/return-saved-text.png" alt="Saved text"></a><br><b>Saved text</b><br><sub>Reusable wording for service-provider records and seized-device extractions, suggested by warrant type.</sub></td>
+<td width="50%" valign="top"><a href="docs/screenshots/warrant-detail.png"><img src="docs/screenshots/warrant-detail.png" alt="Every warrant at a glance"></a><br><b>Every warrant at a glance</b><br><sub>Progress, checklist, deadline with court-day rules, reminders, amendments, and one-click exports.</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="docs/screenshots/warrant-documents.png"><img src="docs/screenshots/warrant-documents.png" alt="Documents with SHA-256"></a><br><b>Documents with SHA-256</b><br><sub>The signed warrant, amendments and generated returns are stored with the case, hashed and verifiable.</sub></td>
+<td width="50%" valign="top"><a href="docs/screenshots/warrant-activity.png"><img src="docs/screenshots/warrant-activity.png" alt="Audit trail"></a><br><b>Audit trail</b><br><sub>Every change, document, signature and export is logged with user and time. Old and new values side by side.</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="docs/screenshots/warrants.png"><img src="docs/screenshots/warrants.png" alt="Caseload"></a><br><b>Caseload</b><br><sub>Filter by status and type, search everything, export CSV or a docket PDF.</sub></td>
+<td width="50%" valign="top"><a href="docs/screenshots/calendar.png"><img src="docs/screenshots/calendar.png" alt="Calendar"></a><br><b>Calendar</b><br><sub>All return deadlines by month. Export to Outlook (.ics).</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="docs/screenshots/templates.png"><img src="docs/screenshots/templates.png" alt="Any agency's template"></a><br><b>Any agency's template</b><br><sub>Import your own .docx with merge tags. Field reference, sample-data test and number-tag mapping included.</sub></td>
+<td width="50%" valign="top"><a href="docs/screenshots/reports.png"><img src="docs/screenshots/reports.png" alt="Reports, exports and backup"></a><br><b>Reports, exports and backup</b><br><sub>Stats by judge and provider, docket PDF, CSV, audit log, full backup and restore, daily snapshots.</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="docs/screenshots/settings-signature.png"><img src="docs/screenshots/settings-signature.png" alt="Signature"></a><br><b>Signature</b><br><sub>Draw it or import a scan once. Stored encrypted with Windows DPAPI and placed on every return.</sub></td>
+<td width="50%" valign="top"><a href="docs/screenshots/settings-saved-text.png"><img src="docs/screenshots/settings-saved-text.png" alt="Manage saved text"></a><br><b>Manage saved text</b><br><sub>Edit the standard wording or add your own, and choose which warrant types it is suggested for.</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="docs/screenshots/settings-reminders.png"><img src="docs/screenshots/settings-reminders.png" alt="Reminders"></a><br><b>Reminders</b><br><sub>Desktop notifications, agency SMTP email or Outlook drafts, lead times and daily overdue alerts.</sub></td>
+<td width="50%" valign="top"><a href="docs/screenshots/command-palette.png"><img src="docs/screenshots/command-palette.png" alt="Ctrl+K for everything"></a><br><b>Ctrl+K for everything</b><br><sub>Jump to any warrant, case, target or action from the keyboard.</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="docs/screenshots/dashboard-light.png"><img src="docs/screenshots/dashboard-light.png" alt="Light theme"></a><br><b>Light theme</b><br><sub>For bright offices and printing screenshots into reports.</sub></td>
+<td width="50%" valign="top"><a href="docs/screenshots/lock.png"><img src="docs/screenshots/lock.png" alt="PIN lock"></a><br><b>PIN lock</b><br><sub>Optional PIN with auto-lock and lock-with-Windows for shared or unattended workstations.</sub></td>
+</tr>
+</table>
 
 ## What's new vs. v1
 
@@ -21,7 +77,7 @@ Version 2 is a full rebuild of v1 (whose source was lost). It keeps every v1 fea
 | Data | Single DB file | Daily snapshots, full backup/restore, portable mode |
 | Signature | Scanned image baked into one template | Draw or import once; inserted at `{signature}` in any template (2.1) |
 | Amendments | - | Record amendments with signed copy, due-date change and added scope (2.1) |
-| Inventory | Typed every time | Saved text library with standard provider-data language, suggested by warrant type (2.2) |
+| Inventory | Typed every time | Saved text library with standard provider-data and seized-device language, suggested by warrant type (2.2, 2.3) |
 
 ## Using it
 
@@ -39,7 +95,7 @@ Shortcuts: `Ctrl+K` search everything, `Ctrl+N` new warrant, `Ctrl+L` lock.
 
 ## Saved text (canned inventory language)
 
-The return wizard's **Property taken** step has a **Saved text** menu of reusable wording. It ships with standard language for electronic data produced by a service provider, which is suggested automatically on service-provider warrants and added as an inventory item with one click. Save any item's wording with its bookmark button, and manage the list (and which warrant types each phrase is suggested for) in **Settings > Saved text**.
+The return wizard's **Property taken** step has a **Saved text** menu of reusable wording. It ships with standard language for electronic data produced by a service provider (suggested on service-provider warrants) and for data extracted from seized electronic devices (suggested on device, premises, vehicle and person warrants). One click adds either as an inventory item. Save any item's wording with its bookmark button, and manage the list (and which warrant types each phrase is suggested for) in **Settings > Saved text**.
 
 ## Amendments
 
@@ -91,6 +147,7 @@ npm test                 # unit tests (dates, reminders, template rendering)
 npm start                # build + run
 npm run dist             # build installer, portable EXE and unpacked folder into release/
 node tests/e2e/run.mjs   # end-to-end test driving the real app (throw-away data folder)
+npm run showcase         # regenerate docs/screenshots and docs/walkthrough.gif with demo data (needs ffmpeg)
 ```
 
 Regenerate the built-in templates from the original agency forms (kept locally in `original-templates/`):
