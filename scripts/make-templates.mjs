@@ -98,7 +98,13 @@ const has = (s) => (t) => t.includes(s);
 
 // ---------- RETURN OF SEARCH WARRANT ----------
 const RECEIVED_PARA_OLD_START = 'I, DETECTIVE AARON CUDDEBACK, THE UNDERSIGNED';
+// Case number in the top right corner, above the title (printed only when the warrant has one).
+const CASE_NUMBER_PARA =
+  '<w:p><w:pPr><w:jc w:val="right"/><w:spacing w:before="0" w:after="60"/><w:rPr><w:b/></w:rPr></w:pPr>' +
+  '<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">{#caseNumber}CASE # {caseNumber}{/caseNumber}</w:t></w:r></w:p>';
+
 const returnEdits = (keepSignature) => [
+  { match: (t) => t.trim() === 'RETURN OF SEARCH WARRANT', apply: (p) => CASE_NUMBER_PARA + p },
   { match: has('STATE OF CALIFORNIA)'), apply: (p) => replaceInParagraph(p, 'STATE OF CALIFORNIA', 'STATE OF {state | upper}') },
   { match: has('SEARCH WARRANT# {1}'), apply: (p) => replaceInParagraph(p, '{1}', '{warrantNumber}') },
   { match: has('COUNTY OF EL DORADO)'), apply: (p) => replaceInParagraph(flattenFields(p), 'COUNTY OF EL DORADO', 'COUNTY OF {county | upper}') },

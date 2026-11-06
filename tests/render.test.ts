@@ -28,6 +28,24 @@ describe('return template', () => {
     expect(out).not.toMatch(/DECEMBER/);
   });
 
+  it('prints the case number in the top right corner, above the title', () => {
+    const w = { ...sampleWarrant(), caseNumber: '26-004417' };
+    const buf = renderDocx(tpl('return-generic.docx'), buildTemplateData(w, settings));
+    const lines = docText(buf).split('\n');
+    expect(lines[0]).toBe('CASE # 26-004417');
+    expect(lines[1]).toBe('RETURN OF SEARCH WARRANT');
+    const xml = new PizZip(buf).file('word/document.xml')!.asText();
+    const firstPara = /<w:p[ >][\s\S]*?<\/w:p>/.exec(xml.slice(xml.indexOf('<w:body>')))![0];
+    expect(firstPara).toContain('<w:jc w:val="right"/>');
+    expect(firstPara).toContain('CASE # 26-004417');
+  });
+
+  it('leaves the case number line empty when the warrant has none', () => {
+    const out = docText(renderDocx(tpl('return-generic.docx'), buildTemplateData({ ...sampleWarrant(), caseNumber: '' }, settings)));
+    expect(out).not.toContain('CASE #');
+    expect(out).toContain('RETURN OF SEARCH WARRANT');
+  });
+
   it('uses the officer profile instead of a hard-coded name and badge', () => {
     const out = docText(renderDocx(tpl('return-generic.docx'), buildTemplateData(sampleWarrant(), settings)));
     expect(out).toContain('I, DETECTIVE PAT EXAMPLE, THE UNDERSIGNED');

@@ -258,6 +258,7 @@ if (files[0]) {
   expect(text.includes('ON MARCH 9, 2026, SEARCHED'), 'return has search date');
   expect(text.includes('I, DETECTIVE AARON CUDDEBACK, THE UNDERSIGNED'), 'return has officer from profile');
   expect(text.includes('#K1158'), 'return has badge');
+  expect(/^CASE # 26-004417\nRETURN OF SEARCH WARRANT/.test(text.trimStart()), 'case number printed above the return title');
   expect(text.includes('SEARCH WARRANT# SW-2026-0311'), 'return has warrant #');
   expect(text.includes('2. Two (2) certificates of authenticity'), 'return has itemized inventory');
   expect(text.includes('3. Digital data, records, and information associated with the target account(s), identifier(s), device(s), telephone number(s), and/or IP address(es)') && text.includes('produced by the service provider pursuant to the search warrant.'), 'return has the saved provider-data language');
