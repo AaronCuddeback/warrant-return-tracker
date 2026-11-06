@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { User, Bell, CalendarClock, FileOutput, ShieldCheck, Monitor, Database, Info, Plus, Trash2, Send, ImagePlus, KeyRound, FolderOpen, Save } from 'lucide-react';
+import { User, Bell, CalendarClock, FileOutput, ShieldCheck, Monitor, Database, Info, Plus, Trash2, Send, ImagePlus, KeyRound, FolderOpen, Save, PenLine } from 'lucide-react';
+import { SignaturePad } from '../components/SignaturePad';
 import { api } from '../lib/api';
 import { navigate } from '../lib/router';
 import { useStore } from '../lib/store';
@@ -9,6 +10,7 @@ import type { Settings, NotifyMethod } from '../../shared/types';
 
 const SECTIONS = [
   { id: 'profile', label: 'Officer & agency', icon: <User size={16} /> },
+  { id: 'signature', label: 'Signature', icon: <PenLine size={16} /> },
   { id: 'notifications', label: 'Reminders', icon: <Bell size={16} /> },
   { id: 'deadlines', label: 'Deadline rules', icon: <CalendarClock size={16} /> },
   { id: 'documents', label: 'Documents', icon: <FileOutput size={16} /> },
@@ -56,6 +58,7 @@ export function SettingsPage({ section = 'profile' }: { section?: string }) {
         </div>
         <div className="card pad" style={{ minHeight: 400 }}>
           {section === 'profile' && <ProfileSection s={s} up={up} />}
+          {section === 'signature' && <SignatureSection s={s} up={up} />}
           {section === 'notifications' && <NotifySection s={s} up={up} dirty={dirty} save={save} />}
           {section === 'deadlines' && <DeadlineSection s={s} up={up} />}
           {section === 'documents' && <DocsSection s={s} up={up} />}
@@ -104,6 +107,54 @@ function ProfileSection(props: SecProps) {
         <div className="grow"><b>Agency logo</b><div className="muted small">Shown in the sidebar and on PDF reports.</div></div>
         <Button icon={<ImagePlus size={15} />} onClick={async () => { const r = await api.setAgencyLogo(); if (r.ok) { reloadLogo(); toast('ok', 'Logo updated'); } else if (!r.canceled) toast('err', r.error!); }}>Choose image...</Button>
       </div>
+    </div>
+  );
+}
+
+export function SignatureSection({ s, up }: SecProps) {
+  const { toast, reloadSettings, version } = useStore();
+  const [img, setImg] = useState<string | null>(null);
+  const [pad, setPad] = useState(false);
+  useEffect(() => {
+    void api.getSignature().then(setImg);
+  }, [version, s.signature.updatedAt]);
+  const save = async (png: Uint8Array) => {
+    const r = await api.setSignature(png);
+    if (r.ok) {
+      toast('ok', 'Signature saved. It will be placed on documents that have a signature line.');
+      setPad(false);
+      await reloadSettings();
+      setImg(await api.getSignature());
+    } else toast('err', r.error!);
+  };
+  return (
+    <div className="col" style={{ gap: 18 }}>
+      <div><h3 style={{ margin: '0 0 4px' }}>Signature</h3><div className="muted small">Draw or import your signature once. It is inserted wherever a template has a <span className="mono">{'{signature}'}</span> tag - the built-in Return of Search Warrant has one above the officer's signature line.</div></div>
+      <div className="sig-show">
+        {img ? <img src={img} alt="Your signature" /> : <span style={{ color: '#7b8496' }}>No signature saved - documents print with a blank line for a wet signature.</span>}
+      </div>
+      <div className="row wrap">
+        <Button variant="primary" icon={<PenLine size={15} />} onClick={() => setPad(true)}>{img ? 'Replace signature' : 'Add signature'}</Button>
+        {img && <Button variant="danger" icon={<Trash2 size={15} />} onClick={async () => {
+          if (await confirmDialog({ title: 'Remove signature?', body: 'Documents will print with a blank signature line until you add a new one.', ok: 'Remove', danger: true })) {
+            await api.setSignature(null);
+            await reloadSettings();
+            setImg(null);
+            toast('ok', 'Signature removed');
+          }
+        }}>Remove</Button>}
+        {img && s.signature.updatedAt && <span className="muted small">Saved {new Date(s.signature.updatedAt).toLocaleString()}</span>}
+      </div>
+      <div className="grid g2">
+        <Field label={`Printed width: ${s.signature.widthInches.toFixed(2)} in`} hint="Height follows automatically. 1.75-2.25 in fits most signature lines.">
+          <input type="range" min={1} max={3.5} step={0.05} value={s.signature.widthInches} onChange={(e) => up((d) => { d.signature.widthInches = Number(e.target.value); })} />
+        </Field>
+        <div className="col" style={{ justifyContent: 'flex-end' }}>
+          <Toggle checked={s.signature.useByDefault} onChange={(v) => up((d) => { d.signature.useByDefault = v; })} label="Sign documents by default (you can switch it off per document)" />
+        </div>
+      </div>
+      <div className="callout small"><ShieldCheck size={16} color="var(--blue)" style={{ flex: 'none' }} /><div>Stored encrypted with Windows DPAPI for your Windows account only. It is not included in full backups and cannot be used if the data folder is copied to another computer or user. Every document that is signed is recorded in the warrant's audit log.</div></div>
+      {pad && <SignaturePad onClose={() => setPad(false)} onSave={save} />}
     </div>
   );
 }

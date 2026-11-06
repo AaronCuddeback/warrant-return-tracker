@@ -34,6 +34,7 @@ export const ATTACH_DIR = join(DATA_DIR, 'attachments');
 export const TEMPLATE_DIR = join(DATA_DIR, 'templates');
 export const BACKUP_DIR = join(DATA_DIR, 'backups');
 export const LOGO_FILE = join(DATA_DIR, 'agency-logo.png');
+export const SIGNATURE_FILE = join(DATA_DIR, 'signature.bin');
 export const LOG_FILE = join(DATA_DIR, 'app.log');
 
 export function ensureDirs() {

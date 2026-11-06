@@ -110,6 +110,40 @@ await page.click('button:has-text("Start tracking")');
 await page.waitForSelector('.kpis');
 await shot('03-dashboard-empty');
 
+// ---------- signature: draw, then import a scanned one ----------
+step('signature');
+await page.evaluate(() => { location.hash = '/settings/signature'; });
+await page.click('button:has-text("Add signature")');
+const pad = page.locator('.sig-paper canvas');
+const box = await pad.boundingBox();
+const sx = (f) => box.x + box.width * f;
+const sy = (f) => box.y + box.height * f;
+await page.mouse.move(sx(0.12), sy(0.62));
+await page.mouse.down();
+for (let i = 0; i <= 40; i++) await page.mouse.move(sx(0.12 + i * 0.012), sy(0.62 - Math.sin(i / 4) * 0.25), { steps: 2 });
+await page.mouse.up();
+await page.mouse.move(sx(0.62), sy(0.35));
+await page.mouse.down();
+for (let i = 0; i <= 25; i++) await page.mouse.move(sx(0.62 + i * 0.012), sy(0.35 + (i % 6) * 0.05), { steps: 2 });
+await page.mouse.up();
+await shot('03a-signature-draw');
+await page.click('.modal-foot button:has-text("Save signature")');
+await page.waitForSelector('.sig-show img');
+const sigImport = join(root, 'office-templates', 'my-signature.png');
+if (existsSync(sigImport)) {
+  await page.click('button:has-text("Replace signature")');
+  await page.click('.seg button:has-text("Import image")');
+  await page.setInputFiles('input[type=file]', sigImport);
+  await page.waitForTimeout(800);
+  await shot('03b-signature-import');
+  await page.click('.modal-foot button:has-text("Save signature")');
+  await page.waitForTimeout(600);
+}
+await shot('03c-signature-settings');
+const hasSig = await page.evaluate(async () => !!(await window.wrt.getSignature()));
+expect(hasSig, 'signature stored (encrypted)');
+expect(!existsSync(join(dataDir, 'signature.png')) && existsSync(join(dataDir, 'signature.bin')), 'signature stored encrypted, not as a plain PNG');
+
 // ---------- intake from PDF ----------
 step('intake');
 await page.click('button:has-text("Add Warrant")');
@@ -134,12 +168,38 @@ await page.click('button:has-text("Save warrant")');
 await page.waitForSelector('.detail-head');
 await shot('05-detail');
 
+// ---------- amendment ----------
+step('amendment');
+const amendPdf = join(out, 'Amendment 1 SW-2026-0311.pdf');
+writeFileSync(amendPdf, makePdf(['AMENDMENT TO SEARCH WARRANT SW-2026-0311', 'Adds Google Drive and Photos content for the account.', 'Hon. Sarah K. Whitfield', 'March 5, 2026']));
+await app.evaluate((_e, p) => { globalThis.__nextOpen = p; }, amendPdf);
+const dueBefore = await page.evaluate(() => window.wrt.getWarrant(1).then((w) => w.returnDueDate));
+await page.click('.detail-head button:has-text("Amend")');
+await page.locator('.modal .field', { hasText: 'Amendment signed on' }).locator('input').fill('2026-03-05');
+await page.locator('.modal .field', { hasText: 'What the amendment changes' }).locator('textarea').fill('Adds Google Drive and Google Photos content to the records sought.');
+await page.locator('.modal .field', { hasText: 'Added places' }).locator('textarea').fill('Google Drive and Google Photos content for jdoe.example@gmail.com');
+await page.click('.modal label:has-text("Restart from amendment date")');
+await page.click('.modal .drop');
+await page.waitForTimeout(300);
+await shot('05a-amendment-modal');
+await page.click('.modal-foot button:has-text("Record amendment")');
+await page.waitForTimeout(800);
+await shot('05b-amended-detail');
+const afterAmend = await page.evaluate(() => window.wrt.getWarrant(1));
+expect(afterAmend.amendments.length === 1, 'amendment recorded');
+expect(afterAmend.returnDueDate === '2026-03-15' && dueBefore === '2026-03-12', `due date restarted from amendment (${dueBefore} -> ${afterAmend.returnDueDate})`);
+expect(afterAmend.locations.includes('As amended (Amendment 1'), 'amended scope added to places searched');
+const atts = await page.evaluate(() => window.wrt.listAttachments(1));
+expect(atts.some((a) => a.kind === 'amendment'), 'signed amendment attached');
+await app.evaluate((_e, p) => { globalThis.__nextOpen = p; }, warrantPdf);
+
 // ---------- generate return ----------
 step('return');
 await page.click('button:has-text("Generate return")');
 await page.waitForSelector('.wizard');
 await page.locator('.field', { hasText: 'Search conducted on' }).locator('input').fill('2026-03-09');
-await page.locator('.wizard textarea').first().fill('Google LLC records for the account jdoe.example@gmail.com, as described in the warrant.');
+const prefilled = await page.locator('.wizard textarea').first().inputValue();
+expect(prefilled.includes('jdoe.example@gmail.com') && prefilled.includes('As amended (Amendment 1'), 'wizard pre-fills places searched incl. amendment');
 await page.click('button:has-text("Next")');
 await page.click('button:has-text("Add item")');
 let rows = page.locator('.wizard .item-row:not(.tiny)');
@@ -151,6 +211,8 @@ await rows.nth(1).locator('input').nth(0).fill('2');
 await rows.nth(1).locator('input').nth(1).fill('certificates of authenticity');
 await page.click('button:has-text("Next")');
 await page.waitForTimeout(2500);
+const signToggle = await page.locator('.wizard label:has-text("Sign with my saved signature") input').isChecked().catch(() => false);
+expect(signToggle, 'wizard offers signing, on by default');
 await shot('06-wizard-preview');
 await page.click('button:has-text("Generate & save .docx")');
 await page.waitForSelector('text=Return generated', { timeout: 15000 });
@@ -167,6 +229,9 @@ if (files[0]) {
   expect(text.includes('SEARCH WARRANT# SW-2026-0311'), 'return has warrant #');
   expect(text.includes('2. Two (2) certificates of authenticity'), 'return has itemized inventory');
   expect(!/DECEMBER/.test(text), 'no stale December 2023 dates');
+  const zipOut = new PizZip(readFileSync(join(docsDir, files[0])));
+  expect(zipOut.file('word/document.xml').asText().includes('rIdWrtSignature') && !!zipOut.file('word/media/wrt-signature.png'), 'return contains the signature image');
+  expect(text.includes('As amended (Amendment 1, signed March 5, 2026)'), 'return lists the amended scope');
   writeFileSync(join(out, 'return-text.txt'), text);
 }
 await page.click('.modal-foot button:has-text("Done")');

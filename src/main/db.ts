@@ -11,7 +11,7 @@ import { log } from './log';
 let db: Database | null = null;
 let SQL: Awaited<ReturnType<typeof initSqlJs>> | null = null;
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -87,6 +87,22 @@ CREATE TABLE IF NOT EXISTS templates (
   outputPattern TEXT NOT NULL DEFAULT '',
   createdAt TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS amendments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  warrantId INTEGER NOT NULL,
+  number INTEGER NOT NULL,
+  signedDate TEXT NOT NULL,
+  judge TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL DEFAULT '',
+  addedScope TEXT NOT NULL DEFAULT '',
+  previousDueDate TEXT,
+  newDueDate TEXT,
+  attachmentId INTEGER,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_amend_w ON amendments(warrantId);
 
 CREATE TABLE IF NOT EXISTS reminders_sent (
   warrantId INTEGER NOT NULL,

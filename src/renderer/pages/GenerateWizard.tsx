@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FileOutput, Plus, Trash2, ClipboardPaste, CheckCircle2, FolderOpen, ExternalLink, ChevronLeft, ChevronRight, Megaphone, ListChecks, AlignLeft } from 'lucide-react';
+import { FileOutput, Plus, Trash2, ClipboardPaste, CheckCircle2, FolderOpen, ExternalLink, ChevronLeft, ChevronRight, Megaphone, ListChecks, AlignLeft, PenLine } from 'lucide-react';
+import { navigate } from '../lib/router';
 import { api } from '../lib/api';
 import { useData, useStore } from '../lib/store';
 import { Button, Field, Input, Modal, Select, Textarea, Toggle, Seg } from '../components/ui';
@@ -28,6 +29,15 @@ export function GenerateWizard({ warrant, kind, onClose }: { warrant: Warrant; k
   const [step, setStep] = useState(0);
   const [markFiled, setMarkFiled] = useState(settings?.app.archiveOnReturn ?? true);
   const [markServed, setMarkServed] = useState(true);
+  const [sign, setSign] = useState(!!settings?.signature.useByDefault);
+  const [sigImg, setSigImg] = useState<string | null>(null);
+  const [usesSig, setUsesSig] = useState(false);
+  useEffect(() => {
+    void api.getSignature().then(setSigImg);
+  }, []);
+  useEffect(() => {
+    if (templateId) void api.templateUsesSignature(templateId).then(setUsesSig);
+  }, [templateId]);
   const [preview, setPreview] = useState<Uint8Array | null>(null);
   const [previewErr, setPreviewErr] = useState('');
   const [saving, setSaving] = useState(false);
@@ -42,14 +52,14 @@ export function GenerateWizard({ warrant, kind, onClose }: { warrant: Warrant; k
     if (!templateId) return;
     clearTimeout(timer.current);
     timer.current = setTimeout(async () => {
-      const r = await api.generateDocument({ warrantId: warrant.id, templateId, patch: effectivePatch, preview: true });
+      const r = await api.generateDocument({ warrantId: warrant.id, templateId, patch: effectivePatch, preview: true, sign });
       if (r.ok && r.data?.bytes) {
         setPreview(r.data.bytes);
         setPreviewErr('');
       } else setPreviewErr(r.error || 'Preview failed');
     }, 450);
     return () => clearTimeout(timer.current);
-  }, [effectivePatch, templateId, warrant.id]);
+  }, [effectivePatch, templateId, warrant.id, sign]);
 
   const steps = kind === 'return' ? ['Search details', 'Property taken', 'Save'] : ['Notice details', 'Save'];
   const last = step === steps.length - 1;
@@ -61,6 +71,7 @@ export function GenerateWizard({ warrant, kind, onClose }: { warrant: Warrant; k
       warrantId: warrant.id, templateId, patch: effectivePatch,
       markFiled: kind === 'return' ? markFiled : undefined,
       markNoticeServed: kind === 'notification' ? markServed : undefined,
+      sign,
     });
     setSaving(false);
     if (r.canceled) return;
@@ -181,6 +192,20 @@ export function GenerateWizard({ warrant, kind, onClose }: { warrant: Warrant; k
                 </Select>
               </Field>
               {choices.length === 0 && <div className="callout warn">No {kind} templates. Add one under Templates.</div>}
+              {usesSig && (
+                sigImg ? (
+                  <div className="col" style={{ gap: 8 }}>
+                    <Toggle checked={sign} onChange={setSign} label="Sign with my saved signature" />
+                    {sign && <div className="sig-show" style={{ minHeight: 0, padding: 8 }}><img src={sigImg} alt="" style={{ maxHeight: 54 }} /></div>}
+                  </div>
+                ) : (
+                  <div className="callout small">
+                    <PenLine size={16} color="var(--blue)" style={{ flex: 'none' }} />
+                    <div className="grow">This template has a signature line. Add your signature once and it can be signed automatically.</div>
+                    <Button size="sm" onClick={() => { onClose(); navigate('/settings/signature'); }}>Add signature</Button>
+                  </div>
+                )
+              )}
               {kind === 'return' && (
                 <Toggle checked={markFiled} onChange={setMarkFiled} label="Mark this warrant as filed and archive it" />
               )}

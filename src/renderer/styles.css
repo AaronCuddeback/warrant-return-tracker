@@ -413,3 +413,11 @@ table.t { width: 100%; border-collapse: separate; border-spacing: 0; }
   .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .detail-grid { grid-template-columns: 1fr; }
 }
+
+/* signature */
+.sig-paper { position: relative; background: #fff; border-radius: 12px; border: 1px solid var(--border-2); overflow: hidden; }
+.sig-line { position: absolute; left: 40px; right: 40px; bottom: 54px; border-bottom: 1.5px solid #b8c0cc; pointer-events: none; }
+.sig-line span { position: absolute; left: -24px; bottom: -2px; color: #9aa3b2; font-weight: 700; font-size: 18px; }
+.sig-checker { border-radius: 10px; padding: 10px; background: repeating-conic-gradient(#e9edf3 0% 25%, #ffffff 0% 50%) 50% / 18px 18px; }
+.sig-show { background: #fff; border-radius: 12px; border: 1px solid var(--border-2); padding: 14px 18px; display: flex; align-items: center; justify-content: center; min-height: 110px; }
+.sig-show img { max-height: 120px; max-width: 100%; }

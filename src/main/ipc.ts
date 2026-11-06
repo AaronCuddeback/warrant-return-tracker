@@ -5,8 +5,8 @@ import { join, dirname, extname } from 'node:path';
 import PizZip from 'pizzip';
 import * as repo from './repo';
 import * as tpl from './templates';
-import { renderDocx, fileNameFromPattern } from './render';
-import { getSettings, saveSettings, setSmtpPassword, setPin, verifyPin } from './settings';
+import { renderDocx, fileNameFromPattern, usesSignature, type SignatureImage } from './render';
+import { getSettings, saveSettings, setSmtpPassword, setPin, verifyPin, setSignature, getSignaturePng } from './settings';
 import { buildTemplateData, sampleWarrant, FIELD_CATALOG } from '../shared/fields';
 import { checkNow, sendReminderNow, desktopNotify } from './reminders';
 import { verifySmtp, sendMail } from './email';
@@ -18,7 +18,7 @@ import { DATA_DIR, PORTABLE, LOGO_FILE, v1DbPath } from './paths';
 import { tx } from './db';
 import { todayISO } from '../shared/dates';
 import { log } from './log';
-import type { Api, AttachmentKind, GenerateRequest, Result, Settings, TemplateInfo, TemplateKind, Warrant, WarrantFilter, WarrantInput, WarrantStatus } from '../shared/types';
+import type { Api, AmendmentInput, AttachmentKind, GenerateRequest, Result, Settings, TemplateInfo, TemplateKind, Warrant, WarrantFilter, WarrantInput, WarrantStatus } from '../shared/types';
 
 type Handlers = { [K in keyof Api]?: (...args: Parameters<Api[K]>) => unknown };
 
@@ -60,7 +60,8 @@ async function generate(req: GenerateRequest): Promise<Result<{ filePath?: strin
   const merged: Warrant = { ...w, ...req.patch } as Warrant;
   const s = getSettings();
   const data = buildTemplateData(merged, s, req.extra);
-  const bytes = renderDocx(tpl.readTemplate(t), data, t.mapping);
+  const sig = signatureFor(req.sign);
+  const bytes = renderDocx(tpl.readTemplate(t), data, t.mapping, sig);
   if (req.preview) return ok({ bytes: new Uint8Array(bytes), sha256: repo.sha256(bytes) });
 
   const fileName = fileNameFromPattern(t.outputPattern, data, `${t.kind}-${w.warrantNumber || w.id}`);
@@ -77,12 +78,23 @@ async function generate(req: GenerateRequest): Promise<Result<{ filePath?: strin
   // Save confirmed details back to the warrant (audited field-by-field)
   if (req.patch && Object.keys(req.patch).length) repo.updateWarrant(w.id, req.patch, `confirmed while generating ${t.name}`);
   const kind: AttachmentKind = t.kind === 'return' ? 'return' : t.kind === 'notification' ? 'notification' : 'other';
-  const attachmentId = tx(() => repo.storeAttachmentBytes(w.id, kind, fileName, bytes, true, t.name));
+  const attachmentId = tx(() => {
+    const id = repo.storeAttachmentBytes(w.id, kind, fileName, bytes, true, t.name);
+    if (sig && usesSignature(tpl.readTemplate(t))) repo.audit(w.id, 'sign', `Stored signature applied to ${fileName}`);
+    return id;
+  });
   if (t.kind === 'return' && req.markFiled) repo.setStatus(w.id, 'filed');
   if (t.kind === 'notification' && req.markNoticeServed && !merged.notificationServedDate) {
     repo.updateWarrant(w.id, { notificationServedDate: merged.executedDate || todayISO() }, undefined, 'notice');
   }
   return ok({ filePath: target, attachmentId, sha256: repo.sha256(bytes) });
+}
+
+function signatureFor(sign: boolean | undefined): SignatureImage | null {
+  const s = getSettings();
+  if (sign === false || (sign === undefined && !s.signature.useByDefault)) return null;
+  const png = getSignaturePng();
+  return png ? { png, widthInches: s.signature.widthInches } : null;
 }
 
 const handlers: Handlers = {
@@ -124,6 +136,27 @@ const handlers: Handlers = {
     }
   },
   verifyPin: (pin: string) => verifyPin(pin),
+  setSignature: (png: Uint8Array | null) => {
+    try {
+      setSignature(png);
+      tx(() => repo.audit(null, 'security', png ? 'Signature image saved' : 'Signature image removed'));
+      return ok();
+    } catch (e) {
+      return fail(e);
+    }
+  },
+  getSignature: () => {
+    const png = getSignaturePng();
+    return png ? `data:image/png;base64,${png.toString('base64')}` : null;
+  },
+  templateUsesSignature: (id: string) => {
+    const t = tpl.getTemplate(id);
+    try {
+      return t ? usesSignature(tpl.readTemplate(t)) : false;
+    } catch {
+      return false;
+    }
+  },
 
   listWarrants: (f: WarrantFilter) => repo.listWarrants(f),
   getWarrant: (id: number) => repo.getWarrant(id),
@@ -214,6 +247,15 @@ const handlers: Handlers = {
   },
 
   audit: (id: number | null, limit?: number) => repo.listAudit(id, limit),
+  listAmendments: (id: number) => repo.listAmendments(id),
+  saveAmendment: (a: AmendmentInput, p?: string | null) => {
+    try {
+      return ok(repo.saveAmendment(a, p));
+    } catch (e) {
+      return fail(e);
+    }
+  },
+  deleteAmendment: (id: number) => wrap(() => repo.deleteAmendment(id)),
 
   listTemplates: () => tpl.listTemplates(),
   importTemplate: async (kind: TemplateKind, p?: string) => {
@@ -261,7 +303,7 @@ const handlers: Handlers = {
     try {
       const t = tpl.getTemplate(id);
       if (!t) throw new Error('Template not found');
-      const bytes = renderDocx(tpl.readTemplate(t), buildTemplateData(sampleWarrant(), getSettings()), t.mapping);
+      const bytes = renderDocx(tpl.readTemplate(t), buildTemplateData(sampleWarrant(), getSettings()), t.mapping, signatureFor(undefined));
       const dir = join(app.getPath('temp'), 'WarrantReturnTracker');
       mkdirSync(dir, { recursive: true });
       const p = uniquePath(join(dir, `TEST - ${t.name}.docx`.replace(/[<>:"/\\|?*]/g, '_')));
@@ -460,7 +502,7 @@ async function saveText(name: string, text: string, label: string, ext: string):
   }
 }
 
-const READ_ONLY = /^(appInfo|get|list|read|find|stats|audit|inspect|templateFieldCatalog|verifyPin|pickFile|chooseFolder|extractDocxText|setTitleBarTheme|openDataFolder|showInFolder|openPath|generateDocument)/;
+const READ_ONLY = /^(appInfo|templateUsesSignature|get|list|read|find|stats|audit|inspect|templateFieldCatalog|verifyPin|pickFile|chooseFolder|extractDocxText|setTitleBarTheme|openDataFolder|showInFolder|openPath|generateDocument)/;
 
 export function registerIpc(getWin: () => BrowserWindow | null, settingsChanged: (s: Settings) => void) {
   win = getWin;

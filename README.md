@@ -19,6 +19,8 @@ Version 2 is a full rebuild of v1 (whose source was lost). It keeps every v1 fea
 | Records | - | Audit log, case summary PDF (chain of custody), case packet zip, docket PDF, CSV, .ics calendar |
 | Security | - | Optional PIN lock with auto-lock and lock-with-Windows, strict sandbox/CSP, Electron security fuses |
 | Data | Single DB file | Daily snapshots, full backup/restore, portable mode |
+| Signature | Scanned image baked into one template | Draw or import once; inserted at `{signature}` in any template (2.1) |
+| Amendments | - | Record amendments with signed copy, due-date change and added scope (2.1) |
 
 ## Using it
 
@@ -29,6 +31,14 @@ Version 2 is a full rebuild of v1 (whose source was lost). It keeps every v1 fea
 5. **Generate return**: confirm dates and the place searched, list the property taken (or paste a list), watch the live preview, save. The warrant is archived (optional) and a hashed copy of the return is kept.
 
 Shortcuts: `Ctrl+K` search everything, `Ctrl+N` new warrant, `Ctrl+L` lock.
+
+## Signature
+
+**Settings > Signature**: draw your signature (mouse, touchpad, touchscreen or pen) or import a photo/scan - the paper background is removed and the ink can be recolored black or blue. It is stored encrypted with Windows DPAPI for your Windows account only (not included in backups) and placed wherever a template has a `{signature}` tag; the built-in return has one above the officer's signature line. The return wizard has a "Sign with my saved signature" switch per document, and every signed document is recorded in the audit log.
+
+## Amendments
+
+**Amend** on a warrant records an amendment: date signed, judge, what changed, added places/items (optionally appended to the places searched in the return), an optional new due date (keep, restart from the amendment date with a rule, or set a date - logged and reminders restart), and the signed amendment document (stored and hashed). Amendments show on the warrant, the warrant list, the docket and the case summary PDF. Template fields: `{amendmentCount}`, `{asAmendedText}`, `{amendmentsText}`, `{amendedDate...}` and a `{#amendments}...{/amendments}` loop.
 
 ## Templates for other agencies
 

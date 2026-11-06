@@ -59,24 +59,56 @@ export interface Warrant {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  /** Populated by getWarrant (read-only). */
+  amendments?: Amendment[];
 }
 
 export type WarrantInput = Omit<
   Warrant,
-  'id' | 'createdAt' | 'updatedAt' | 'deletedAt'
+  'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'amendments'
 >;
+
+export interface Amendment {
+  id: number;
+  warrantId: number;
+  number: number;
+  signedDate: ISODate;
+  judge: string;
+  summary: string;
+  addedScope: string;
+  previousDueDate: ISODate | null;
+  newDueDate: ISODate | null;
+  attachmentId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AmendmentInput {
+  id?: number;
+  warrantId: number;
+  signedDate: ISODate;
+  judge: string;
+  summary: string;
+  addedScope: string;
+  /** Append addedScope to the warrant's "places searched" text. */
+  appendScope?: boolean;
+  /** New return due date (null = keep current). */
+  newDueDate: ISODate | null;
+}
 
 export interface WarrantListItem extends Warrant {
   attachmentCount: number;
+  amendmentCount: number;
   hasWarrantDoc: boolean;
   returnGenerated: boolean;
   notificationGenerated: boolean;
 }
 
-export type AttachmentKind = 'warrant' | 'return' | 'notification' | 'affidavit' | 'provider-return' | 'other';
+export type AttachmentKind = 'warrant' | 'amendment' | 'return' | 'notification' | 'affidavit' | 'provider-return' | 'other';
 
 export const ATTACHMENT_KINDS: { value: AttachmentKind; label: string }[] = [
   { value: 'warrant', label: 'Signed warrant' },
+  { value: 'amendment', label: 'Amendment to warrant' },
   { value: 'affidavit', label: 'Affidavit / Statement of PC' },
   { value: 'return', label: 'Return of search warrant' },
   { value: 'notification', label: 'Notification' },
@@ -184,6 +216,12 @@ export interface Settings {
     archiveOnReturn: boolean;
     dateFormat: 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
   };
+  signature: {
+    hasSignature: boolean; // image itself is stored encrypted (Windows DPAPI)
+    widthInches: number;
+    useByDefault: boolean;
+    updatedAt: string | null;
+  };
   dueRules: DueRule[];
   holidays: ISODate[];
   backup: {
@@ -243,6 +281,8 @@ export interface GenerateRequest {
   markFiled?: boolean;
   /** Notification: record the notice as served on the search date. */
   markNoticeServed?: boolean;
+  /** Insert the stored signature image at {signature} tags. */
+  sign?: boolean;
 }
 
 export interface GeneratedDoc {
@@ -264,6 +304,9 @@ export interface Api {
   saveSettings(s: Settings): Promise<Result>;
   setSmtpPassword(pw: string): Promise<Result>;
   setPin(pin: string | null): Promise<Result>;
+  setSignature(png: Uint8Array | null): Promise<Result>;
+  getSignature(): Promise<string | null>;
+  templateUsesSignature(id: string): Promise<boolean>;
   verifyPin(pin: string): Promise<boolean>;
 
   listWarrants(f: WarrantFilter): Promise<WarrantListItem[]>;
@@ -291,6 +334,10 @@ export interface Api {
   getPathForFile(file: File): string;
 
   audit(warrantId: number | null, limit?: number): Promise<AuditEntry[]>;
+
+  listAmendments(warrantId: number): Promise<Amendment[]>;
+  saveAmendment(a: AmendmentInput, attachPath?: string | null): Promise<Result<number>>;
+  deleteAmendment(id: number): Promise<Result>;
 
   listTemplates(): Promise<TemplateInfo[]>;
   importTemplate(kind: TemplateKind, path?: string): Promise<Result<TemplateInfo>>;

@@ -20,7 +20,7 @@ function csvCell(v: unknown): string {
 export function warrantsCsv(f: WarrantFilter): string {
   const s = getSettings();
   const rows = listWarrants(f);
-  const head = ['Warrant #', 'Case #', 'Type', 'Target(s)', 'Judge', 'Signed', 'Received', 'Executed', 'Return Due', 'Days Left', 'Status', 'Filed', 'Notification Required', 'Notification Served', 'Provider', 'Locations', 'Assigned To', 'Tags', 'Created'];
+  const head = ['Warrant #', 'Case #', 'Type', 'Target(s)', 'Judge', 'Signed', 'Received', 'Executed', 'Return Due', 'Days Left', 'Status', 'Filed', 'Notification Required', 'Notification Served', 'Amendments', 'Provider', 'Locations', 'Assigned To', 'Tags', 'Created'];
   const lines = [head.map(csvCell).join(',')];
   for (const w of rows) {
     lines.push(
@@ -28,7 +28,7 @@ export function warrantsCsv(f: WarrantFilter): string {
         w.warrantNumber, w.caseNumber, WARRANT_TYPES.find((t) => t.value === w.warrantType)?.label, w.targets, w.judge,
         formatDate(w.signedDate, s.app.dateFormat), formatDate(w.receivedDate, s.app.dateFormat), formatDate(w.executedDate, s.app.dateFormat),
         formatDate(w.returnDueDate, s.app.dateFormat), w.status === 'filed' ? '' : daysUntil(w.returnDueDate), w.status,
-        formatDate(w.filedDate, s.app.dateFormat), w.notificationRequired ? 'Yes' : 'No', formatDate(w.notificationServedDate, s.app.dateFormat),
+        formatDate(w.filedDate, s.app.dateFormat), w.notificationRequired ? 'Yes' : 'No', formatDate(w.notificationServedDate, s.app.dateFormat), w.amendmentCount,
         w.provider, w.locations, w.assignedTo, w.tags, w.createdAt,
       ].map(csvCell).join(','),
     );
@@ -83,7 +83,7 @@ export function docketHtml(f: WarrantFilter): string {
       const d = daysUntil(w.returnDueDate);
       const cls = w.status === 'filed' ? '' : d < 0 ? 'ov' : d <= 3 ? 'cr' : 'ok';
       const st = w.status === 'filed' ? `Filed ${formatDate(w.filedDate, s.app.dateFormat)}` : relativeDays(d);
-      return `<tr><td class="${cls}">${escapeHtml(st)}</td><td>${escapeHtml(w.warrantNumber)}</td><td>${escapeHtml(w.caseNumber)}</td><td>${escapeHtml(w.targets)}</td><td>${escapeHtml(w.judge)}</td><td>${formatDate(w.signedDate, s.app.dateFormat)}</td><td>${formatDate(w.executedDate, s.app.dateFormat) || '-'}</td><td>${formatDate(w.returnDueDate, s.app.dateFormat)}</td><td>${w.notificationRequired ? (w.notificationServedDate ? 'Served' : 'OUTSTANDING') : 'N/A'}</td></tr>`;
+      return `<tr><td class="${cls}">${escapeHtml(st)}</td><td>${escapeHtml(w.warrantNumber)}${w.amendmentCount ? ` <i>(amended${w.amendmentCount > 1 ? ' x' + w.amendmentCount : ''})</i>` : ''}</td><td>${escapeHtml(w.caseNumber)}</td><td>${escapeHtml(w.targets)}</td><td>${escapeHtml(w.judge)}</td><td>${formatDate(w.signedDate, s.app.dateFormat)}</td><td>${formatDate(w.executedDate, s.app.dateFormat) || '-'}</td><td>${formatDate(w.returnDueDate, s.app.dateFormat)}</td><td>${w.notificationRequired ? (w.notificationServedDate ? 'Served' : 'OUTSTANDING') : 'N/A'}</td></tr>`;
     })
     .join('')}
   </tbody></table>${rows.length ? '' : '<p>No warrants in this view.</p>'}`;
@@ -111,6 +111,10 @@ export function caseSummaryHtml(id: number): string {
     ['Return due', `${fd(w.returnDueDate)} (${w.dueRule || 'custom'})`], ['Return filed', fd(w.filedDate)],
     ['Notification', w.notificationRequired ? `Required - ${w.notificationServedDate ? 'served ' + fd(w.notificationServedDate) : 'NOT SERVED'}` : 'Not required'],
   ])}
+  ${(w.amendments ?? []).length ? `<h2>Amendments</h2>
+  <table><thead><tr><th>#</th><th>Signed</th><th>Judge</th><th>Changes</th><th>Due date</th></tr></thead><tbody>
+  ${(w.amendments ?? []).map((a) => `<tr><td>${a.number}</td><td style="white-space:nowrap">${fd(a.signedDate)}</td><td>${escapeHtml(a.judge)}</td><td>${escapeHtml(a.summary)}${a.addedScope ? `<br><i>Added: ${escapeHtml(a.addedScope)}</i>` : ''}</td><td style="white-space:nowrap">${a.newDueDate ? `${fd(a.previousDueDate)} &rarr; ${fd(a.newDueDate)}` : 'unchanged'}</td></tr>`).join('')}
+  </tbody></table>` : ''}
   <h2>Return</h2>${kv([['Locations searched', w.locations || '-'], ['Property taken', inv], ['Investigation', w.investigationNature || '-'], ['Notes', w.notes || '-']])}
   <h2>Documents (SHA-256)</h2>
   <table><thead><tr><th>Type</th><th>File</th><th>Added</th><th>SHA-256</th></tr></thead><tbody>

@@ -4,12 +4,12 @@ type InvokeName = Exclude<keyof Api, 'onNavigate' | 'onDataChanged' | 'onLock' |
 
 /** Every IPC method the preload bridge forwards to the main process. */
 export const API_METHODS = [
-  'appInfo', 'getSettings', 'saveSettings', 'setSmtpPassword', 'setPin', 'verifyPin',
+  'appInfo', 'getSettings', 'saveSettings', 'setSmtpPassword', 'setPin', 'verifyPin', 'setSignature', 'getSignature', 'templateUsesSignature',
   'listWarrants', 'getWarrant', 'createWarrant', 'updateWarrant', 'setStatus', 'extendDueDate', 'snooze',
   'trashWarrant', 'restoreWarrant', 'purgeWarrant', 'findDuplicates', 'stats',
   'listAttachments', 'addAttachments', 'readAttachment', 'saveAttachmentAs', 'openAttachment', 'removeAttachment',
   'verifyAttachment', 'pickFile', 'readFileBytes',
-  'audit',
+  'audit', 'listAmendments', 'saveAmendment', 'deleteAmendment',
   'listTemplates', 'importTemplate', 'updateTemplate', 'replaceTemplateFile', 'deleteTemplate', 'duplicateTemplate',
   'inspectTemplate', 'exportTemplate', 'testTemplate', 'templateFieldCatalog', 'generateDocument',
   'sendTestEmail', 'sendReminderNow', 'runReminderCheck', 'testDesktopNotification', 'exportIcs',

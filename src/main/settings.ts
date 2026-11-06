@@ -1,7 +1,7 @@
 import { safeStorage } from 'electron';
-import { readFileSync, writeFileSync, existsSync, renameSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, renameSync, unlinkSync } from 'node:fs';
 import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
-import { SETTINGS_FILE, SECRETS_FILE } from './paths';
+import { SETTINGS_FILE, SECRETS_FILE, SIGNATURE_FILE } from './paths';
 import type { Settings } from '../shared/types';
 import { log } from './log';
 
@@ -51,6 +51,7 @@ export function defaultSettings(): Settings {
       archiveOnReturn: true,
       dateFormat: 'MM/DD/YYYY',
     },
+    signature: { hasSignature: false, widthInches: 2, useByDefault: true, updatedAt: null },
     dueRules: [
       { id: 'r10', name: '10 days (Cal. Penal Code 1534)', days: 10, dayType: 'calendar' },
       { id: 'r30', name: '30 calendar days', days: 30, dayType: 'calendar' },
@@ -97,6 +98,7 @@ export function getSettings(): Settings {
   const sec = readSecrets();
   s.smtp.hasPassword = !!sec.smtpPassword;
   s.app.hasPin = !!sec.pinHash;
+  s.signature.hasSignature = existsSync(SIGNATURE_FILE);
   cache = s;
   return s;
 }
@@ -106,6 +108,7 @@ export function saveSettings(s: Settings) {
   s.smtp.hasPassword = !!sec.smtpPassword;
   s.app.hasPin = !!sec.pinHash;
   if (!s.app.hasPin) s.app.lockEnabled = false;
+  s.signature.hasSignature = existsSync(SIGNATURE_FILE);
   const tmp = SETTINGS_FILE + '.tmp';
   writeFileSync(tmp, JSON.stringify(s, null, 2));
   renameSync(tmp, SETTINGS_FILE);
@@ -165,6 +168,30 @@ export function verifyPin(pin: string): boolean {
   const [, saltHex, hashHex] = h.split('$');
   const got = scryptSync(pin, Buffer.from(saltHex, 'hex'), 32);
   return timingSafeEqual(got, Buffer.from(hashHex, 'hex'));
+}
+
+// ---- signature image: PNG encrypted with DPAPI so a copied data folder cannot be used to sign ----
+
+export function setSignature(png: Uint8Array | null) {
+  if (png) {
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows secure storage is not available; cannot store a signature.');
+    if (png.length > 2_000_000) throw new Error('Signature image is too large (max 2 MB).');
+    const b64 = Buffer.from(png).toString('base64');
+    writeFileSync(SIGNATURE_FILE, safeStorage.encryptString(b64));
+  } else if (existsSync(SIGNATURE_FILE)) unlinkSync(SIGNATURE_FILE);
+  const s = getSettings();
+  s.signature.updatedAt = png ? new Date().toISOString() : null;
+  saveSettings(s);
+}
+
+export function getSignaturePng(): Buffer | null {
+  if (!existsSync(SIGNATURE_FILE)) return null;
+  try {
+    return Buffer.from(safeStorage.decryptString(readFileSync(SIGNATURE_FILE)), 'base64');
+  } catch (e) {
+    log('warn', 'could not decrypt signature (different Windows user?)', e);
+    return null;
+  }
 }
 
 export function invalidateSettingsCache() {

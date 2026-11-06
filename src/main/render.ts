@@ -64,13 +64,24 @@ export function applyMapping(data: Record<string, unknown>, mapping: Record<stri
   return out;
 }
 
-export function renderDocx(template: Buffer | Uint8Array, data: Record<string, unknown>, mapping: Record<string, string> = {}): Buffer {
+export interface SignatureImage {
+  png: Buffer | Uint8Array;
+  widthInches: number;
+}
+
+export function renderDocx(
+  template: Buffer | Uint8Array,
+  data: Record<string, unknown>,
+  mapping: Record<string, string> = {},
+  signature: SignatureImage | null = null,
+): Buffer {
   let zip: PizZip;
   try {
     zip = new PizZip(template);
   } catch {
     throw new Error('The template is not a valid .docx file (older .doc files must be re-saved as .docx in Word).');
   }
+  let out: PizZip;
   try {
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
@@ -78,10 +89,100 @@ export function renderDocx(template: Buffer | Uint8Array, data: Record<string, u
       parser,
       nullGetter: () => '',
     });
-    doc.render(applyMapping(data, mapping));
-    return doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' }) as Buffer;
+    doc.render(applyMapping({ ...data, signature: SIGNATURE_MARKER }, mapping));
+    out = doc.getZip();
   } catch (e) {
     throw new Error(friendlyError(e));
+  }
+  placeSignature(out, signature);
+  return out.generate({ type: 'nodebuffer', compression: 'DEFLATE' }) as Buffer;
+}
+
+// ---------------- signature image ----------------
+// The {signature} tag renders as a marker; afterwards each marker is swapped for an inline
+// picture (or removed when no signature is stored / the officer chose not to sign).
+
+export const SIGNATURE_MARKER = '__WRT_SIGNATURE__';
+const SIG_REL_ID = 'rIdWrtSignature';
+const SIG_MEDIA = 'media/wrt-signature.png';
+const EMU_PER_INCH = 914400;
+
+export function pngSize(png: Buffer | Uint8Array): { w: number; h: number } {
+  const b = Buffer.from(png);
+  if (b.length < 24 || b.readUInt32BE(12) !== 0x49484452) throw new Error('Signature image is not a valid PNG');
+  return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) };
+}
+
+function drawingRun(cx: number, cy: number, id: number) {
+  return (
+    `<w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" distT="0" distB="0" distL="0" distR="0">` +
+    `<wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${id}" name="Officer signature"/>` +
+    `<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>` +
+    `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+    `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${id}" name="signature.png"/><pic:cNvPicPr/></pic:nvPicPr>` +
+    `<pic:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="${SIG_REL_ID}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+    `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>` +
+    `</a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`
+  );
+}
+
+function relsPathFor(part: string) {
+  const i = part.lastIndexOf('/');
+  return `${part.slice(0, i)}/_rels/${part.slice(i + 1)}.rels`;
+}
+
+export function placeSignature(zip: PizZip, sig: SignatureImage | null) {
+  const parts = Object.keys(zip.files).filter((f) => /^word\/(document|header\d*|footer\d*)\.xml$/.test(f));
+  let used = false;
+  let nextId = 9100;
+  for (const part of parts) {
+    let xml = zip.file(part)!.asText();
+    if (!xml.includes(SIGNATURE_MARKER)) continue;
+    if (!sig) {
+      zip.file(part, xml.split(SIGNATURE_MARKER).join(''));
+      continue;
+    }
+    const { w, h } = pngSize(sig.png);
+    const cx = Math.round(Math.max(0.5, Math.min(6, sig.widthInches || 2)) * EMU_PER_INCH);
+    const cy = Math.round((cx * h) / w);
+    // <w:t ...>before MARKER after</w:t>  ->  close the run, insert picture run, reopen the run
+    const re = new RegExp(`<w:t(\\s[^>]*)?>([^<]*?)${SIGNATURE_MARKER}([^<]*)</w:t>`);
+    for (let m = re.exec(xml); m; m = re.exec(xml)) {
+      const runStart = Math.max(xml.lastIndexOf('<w:r>', m.index), xml.lastIndexOf('<w:r ', m.index));
+      const runHead = xml.slice(runStart, m.index);
+      const rPr = /<w:rPr>[\s\S]*?<\/w:rPr>/.exec(runHead)?.[0] ?? '';
+      const replacement =
+        `<w:t xml:space="preserve">${m[2]}</w:t></w:r>` + drawingRun(cx, cy, nextId++) + `<w:r>${rPr}<w:t xml:space="preserve">${m[3]}</w:t>`;
+      xml = xml.slice(0, m.index) + replacement + xml.slice(m.index + m[0].length);
+    }
+    xml = xml.split(SIGNATURE_MARKER).join(''); // any marker the regex could not place (e.g. inside an attribute)
+    zip.file(part, xml);
+
+    const relsPath = relsPathFor(part);
+    let rels = zip.file(relsPath)?.asText() ??
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+    if (!rels.includes(`Id="${SIG_REL_ID}"`)) {
+      rels = rels.replace('</Relationships>', `<Relationship Id="${SIG_REL_ID}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${SIG_MEDIA}"/></Relationships>`);
+      zip.file(relsPath, rels);
+    }
+    used = true;
+  }
+  if (used && sig) {
+    zip.file(`word/${SIG_MEDIA}`, Buffer.from(sig.png));
+    let ct = zip.file('[Content_Types].xml')!.asText();
+    if (!/Extension="png"/i.test(ct)) {
+      ct = ct.replace('</Types>', '<Default Extension="png" ContentType="image/png"/></Types>');
+      zip.file('[Content_Types].xml', ct);
+    }
+  }
+}
+
+/** True if the rendered template contains a {signature} tag. */
+export function usesSignature(template: Buffer | Uint8Array): boolean {
+  try {
+    return inspectDocx(template).tags.some((t) => t.tag === 'signature');
+  } catch {
+    return false;
   }
 }
 

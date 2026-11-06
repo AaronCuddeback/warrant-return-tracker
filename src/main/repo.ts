@@ -7,10 +7,11 @@ import { userInfo } from 'node:os';
 import { all, get, run, tx } from './db';
 import { ATTACH_DIR } from './paths';
 import type {
+  Amendment, AmendmentInput,
   Attachment, AttachmentKind, AuditEntry, DashboardStats, Warrant, WarrantFilter, WarrantInput,
   WarrantListItem, WarrantStatus, ISODate,
 } from '../shared/types';
-import { daysUntil, todayISO, isISODate } from '../shared/dates';
+import { daysUntil, todayISO, isISODate, formatDate } from '../shared/dates';
 
 const USER = (() => {
   try {
@@ -88,7 +89,7 @@ export function listAudit(warrantId: number | null, limit = 500): AuditEntry[] {
 
 export function getWarrant(id: number): Warrant | null {
   const r = get('SELECT * FROM warrants WHERE id = ?', [id]);
-  return r ? rowToWarrant(r) : null;
+  return r ? { ...rowToWarrant(r), amendments: listAmendments(id) } : null;
 }
 
 export function listWarrants(f: WarrantFilter): WarrantListItem[] {
@@ -108,6 +109,7 @@ export function listWarrants(f: WarrantFilter): WarrantListItem[] {
   const rows = all(
     `SELECT w.*,
       (SELECT COUNT(*) FROM attachments a WHERE a.warrantId = w.id) AS attachmentCount,
+      (SELECT COUNT(*) FROM amendments m WHERE m.warrantId = w.id) AS amendmentCount,
       EXISTS(SELECT 1 FROM attachments a WHERE a.warrantId = w.id AND a.kind = 'warrant') AS hasWarrantDoc,
       EXISTS(SELECT 1 FROM attachments a WHERE a.warrantId = w.id AND a.kind = 'return' AND a.generated = 1) AS returnGenerated,
       EXISTS(SELECT 1 FROM attachments a WHERE a.warrantId = w.id AND a.kind = 'notification' AND a.generated = 1) AS notificationGenerated
@@ -118,6 +120,7 @@ export function listWarrants(f: WarrantFilter): WarrantListItem[] {
   return rows.map((r) => ({
     ...rowToWarrant(r),
     attachmentCount: Number(r.attachmentCount),
+    amendmentCount: Number(r.amendmentCount),
     hasWarrantDoc: !!r.hasWarrantDoc,
     returnGenerated: !!r.returnGenerated,
     notificationGenerated: !!r.notificationGenerated,
@@ -221,6 +224,7 @@ export function purgeWarrant(id: number) {
   tx(() => {
     run('DELETE FROM attachments WHERE warrantId = ?', [id]);
     run('DELETE FROM reminders_sent WHERE warrantId = ?', [id]);
+    run('DELETE FROM amendments WHERE warrantId = ?', [id]);
     run('DELETE FROM warrants WHERE id = ?', [id]);
     audit(null, 'purge', `Warrant ${w.warrantNumber || w.caseNumber} (case ${w.caseNumber}) permanently deleted`, {
       id, warrantNumber: w.warrantNumber, caseNumber: w.caseNumber, attachments: atts.map((a) => ({ name: a.originalName, sha256: a.sha256 })),
@@ -337,4 +341,76 @@ export function verifyAttachment(id: number): boolean {
   const ok = sha256(readFileSync(p)) === a.sha256;
   tx(() => audit(a.warrantId, 'verify', `Integrity check ${ok ? 'PASSED' : 'FAILED'}: ${a.originalName}`, { sha256: a.sha256 }));
   return ok;
+}
+
+// ---- amendments ----
+
+export function listAmendments(warrantId: number): Amendment[] {
+  return all<Amendment>('SELECT * FROM amendments WHERE warrantId = ? ORDER BY number ASC', [warrantId]);
+}
+
+export function getAmendment(id: number): Amendment | undefined {
+  return get<Amendment>('SELECT * FROM amendments WHERE id = ?', [id]);
+}
+
+/** Create or update an amendment. Optionally changes the due date and extends the searched scope. */
+export function saveAmendment(a: AmendmentInput, attachPath?: string | null): number {
+  const w = getWarrant(a.warrantId);
+  if (!w) throw new Error('Warrant not found');
+  if (!isISODate(a.signedDate)) throw new Error('A valid amendment signed date is required.');
+  if (!a.summary.trim()) throw new Error('Describe what the amendment changes.');
+  if (a.newDueDate && !isISODate(a.newDueDate)) throw new Error('The new due date is not valid.');
+  const now = new Date().toISOString();
+  const existing = a.id ? getAmendment(a.id) : undefined;
+  if (a.id && !existing) throw new Error('Amendment not found');
+
+  const id = tx(() => {
+    let id: number;
+    let number: number;
+    if (existing) {
+      id = existing.id;
+      number = existing.number;
+      run('UPDATE amendments SET signedDate = ?, judge = ?, summary = ?, addedScope = ?, updatedAt = ? WHERE id = ?', [
+        a.signedDate, a.judge.trim(), a.summary.trim(), a.addedScope.trim(), now, id,
+      ]);
+      audit(w.id, 'amendment', `Amendment ${number} edited`, { signedDate: a.signedDate, judge: a.judge, summary: a.summary });
+    } else {
+      number = Number(get<{ n: number }>('SELECT COALESCE(MAX(number), 0) AS n FROM amendments WHERE warrantId = ?', [w.id])?.n ?? 0) + 1;
+      id = run(
+        'INSERT INTO amendments (warrantId, number, signedDate, judge, summary, addedScope, previousDueDate, newDueDate, attachmentId, createdAt, updatedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+        [w.id, number, a.signedDate, a.judge.trim(), a.summary.trim(), a.addedScope.trim(), null, null, null, now, now],
+      );
+      audit(w.id, 'amendment', `Amendment ${number} added (signed ${a.signedDate}${a.judge.trim() ? ` by ${a.judge.trim()}` : ''}): ${a.summary.trim()}`, {
+        signedDate: a.signedDate, judge: a.judge, summary: a.summary, addedScope: a.addedScope,
+      });
+    }
+    if (attachPath) {
+      const attId = storeAttachment(w.id, 'amendment', attachPath);
+      run('UPDATE amendments SET attachmentId = ? WHERE id = ?', [attId, id]);
+    }
+    return id;
+  });
+
+  const amd = getAmendment(id)!;
+  if (a.newDueDate && a.newDueDate !== w.returnDueDate) {
+    updateWarrant(w.id, { returnDueDate: a.newDueDate, dueRule: '' }, `per Amendment ${amd.number}`, 'due-date');
+    tx(() => {
+      run("DELETE FROM reminders_sent WHERE warrantId = ? AND key NOT LIKE 'overdue:%'", [w.id]);
+      run('UPDATE amendments SET previousDueDate = COALESCE(previousDueDate, ?), newDueDate = ? WHERE id = ?', [w.returnDueDate, a.newDueDate, id]);
+    });
+  }
+  if (a.appendScope && a.addedScope.trim() && !existing) {
+    const add = `As amended (Amendment ${amd.number}, signed ${formatDate(a.signedDate, "MMMM D, YYYY")}): ${a.addedScope.trim()}`;
+    updateWarrant(w.id, { locations: w.locations.trim() ? `${w.locations.trim()}\n\n${add}` : add }, `per Amendment ${amd.number}`);
+  }
+  return id;
+}
+
+export function deleteAmendment(id: number) {
+  const a = getAmendment(id);
+  if (!a) return;
+  tx(() => {
+    run('DELETE FROM amendments WHERE id = ?', [id]);
+    audit(a.warrantId, 'amendment', `Amendment ${a.number} record deleted (its document, if any, was kept)`, a);
+  });
 }

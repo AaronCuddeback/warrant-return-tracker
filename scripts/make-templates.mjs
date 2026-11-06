@@ -119,7 +119,8 @@ const returnEdits = (keepSignature) => [
     match: has('#K1158'),
     apply: (p) => {
       let x = replaceInParagraph(p, '#K1158', '#{badgeNumber}');
-      if (!keepSignature) x = x.replace(/<w:r>(?:(?!<\/w:r>)[\s\S])*?<w:drawing>[\s\S]*?<\/w:drawing>(?:(?!<\/w:r>)[\s\S])*?<\/w:r>/g, '');
+      // The scanned signature becomes a {signature} tag, filled from Settings > Signature
+      if (!keepSignature) x = x.replace(/<w:r>(?:(?!<\/w:r>)[\s\S])*?<w:drawing>[\s\S]*?<\/w:drawing>(?:(?!<\/w:r>)[\s\S])*?<\/w:r>/g, '<w:r><w:t>{signature}</w:t></w:r>');
       return x;
     },
   },
@@ -165,7 +166,9 @@ const notSrc = join(srcDir, '1 CONTEMPORANEOUS NOTIFICATION TEMPLATE.docx');
 
 const gen = (zip) => zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
 writeFileSync(join(tplOut, 'return-generic.docx'), gen(rewriteDoc(retSrc, returnEdits(false))));
-writeFileSync(join(officeOut, 'EDSO Return of Search Warrant (signed).docx'), gen(rewriteDoc(retSrc, returnEdits(true))));
+// Personal copy of the officer's scanned signature, for Settings > Signature > Import (not committed)
+const sigImg = new PizZip(readFileSync(retSrc)).file('word/media/image1.png');
+if (sigImg) writeFileSync(join(officeOut, 'my-signature.png'), sigImg.asNodeBuffer());
 writeFileSync(join(tplOut, 'notification-generic.docx'), gen(rewriteDoc(notSrc, notificationEdits)));
 
 // Report final text so the conversion can be eyeballed

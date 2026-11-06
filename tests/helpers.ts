@@ -14,6 +14,7 @@ export function defaultSettingsForTest(): Settings {
       theme: 'dark', minimizeToTray: true, startOnLogin: false, startMinimized: false, lockEnabled: false, lockMinutes: 15, hasPin: false,
       outputFolder: '', askWhereToSave: true, archiveOnReturn: true, dateFormat: 'MM/DD/YYYY',
     },
+    signature: { hasSignature: false, widthInches: 2, useByDefault: true, updatedAt: null },
     dueRules: [{ id: 'r10', name: '10 days', days: 10, dayType: 'calendar' }],
     holidays: [],
     backup: { autoDaily: true, keep: 14, folder: '', lastBackupAt: null },

@@ -44,6 +44,9 @@ function registerAppProtocol() {
 }
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling,MediaSessionService');
 
+// Test harness: isolate the Chromium profile (and the single-instance lock) from a real running copy
+if (!app.isPackaged && process.env.WRT_DATA_DIR) app.setPath('userData', join(process.env.WRT_DATA_DIR, 'electron-profile'));
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {

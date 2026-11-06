@@ -90,3 +90,33 @@ describe('inspection + filters', () => {
     expect(fileNameFromPattern('{caseNumber} - Return {warrantNumber}', { caseNumber: '23/12345', warrantNumber: 'SW:1' }, 'x')).toBe('23_12345 - Return SW_1.docx');
   });
 });
+
+describe('signature image', () => {
+  // 4x2 transparent PNG
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAYAAAB/qH1jAAAAEUlEQVR4nGNgYGD4z0AEYAQAHP0BAc8nU8oAAAAASUVORK5CYII=',
+    'base64',
+  );
+
+  it('embeds the stored signature as a picture where {signature} is', () => {
+    const out = renderDocx(tpl('return-generic.docx'), buildTemplateData(sampleWarrant(), settings), {}, { png, widthInches: 2 });
+    const zip = new PizZip(out);
+    const xml = zip.file('word/document.xml')!.asText();
+    expect(xml).toContain('<w:drawing>');
+    expect(xml).toContain('r:embed="rIdWrtSignature"');
+    expect(xml).toContain(`cx="${2 * 914400}" cy="${914400}"`); // 2in wide, aspect 2:1
+    expect(xml).not.toContain('__WRT_SIGNATURE__');
+    expect(zip.file('word/_rels/document.xml.rels')!.asText()).toContain('media/wrt-signature.png');
+    expect(zip.file('[Content_Types].xml')!.asText()).toMatch(/Extension="png"/i);
+    expect(zip.file('word/media/wrt-signature.png')!.asNodeBuffer().equals(png)).toBe(true);
+    expect(docText(out)).toContain('#B123'); // badge stays on the line after the signature
+  });
+
+  it('leaves the line blank (for a wet signature) when no signature is used', () => {
+    const out = renderDocx(tpl('return-generic.docx'), buildTemplateData(sampleWarrant(), settings), {}, null);
+    const xml = new PizZip(out).file('word/document.xml')!.asText();
+    expect(xml).not.toContain('<w:drawing>');
+    expect(xml).not.toContain('__WRT_SIGNATURE__');
+    expect(docText(out)).toContain('#B123');
+  });
+});

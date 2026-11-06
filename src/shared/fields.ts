@@ -20,6 +20,7 @@ const DATE_FIELDS: { key: string; label: string; example: string }[] = [
   { key: 'filed', label: 'Return filed', example: '2023-12-14' },
   { key: 'notification', label: 'Notification served', example: '2023-12-13' },
   { key: 'today', label: 'Today (document date)', example: '2023-12-14' },
+  { key: 'amended', label: 'Latest amendment signed', example: '2023-12-08' },
 ];
 
 const DATE_VARIANTS: { suffix: string; label: string; fmt: string }[] = [
@@ -56,12 +57,22 @@ export const FIELD_CATALOG: FieldDef[] = [
   { tag: 'index', label: '(inside items loop) item number', group: 'Return', example: '1' },
   { tag: 'noItemsText', label: '"No property was taken" when inventory is empty', group: 'Return', example: '' },
   { tag: 'investigationNature', label: 'Nature of the investigation', group: 'Notification', example: 'possession of controlled substances for sale' },
+  { tag: 'amendmentCount', label: 'Number of amendments (0 if none)', group: 'Amendments', example: '1' },
+  { tag: 'asAmendedText', label: '"as amended on December 8, 2023" - blank if never amended', group: 'Amendments', example: 'as amended on December 8, 2023' },
+  { tag: 'amendmentsText', label: 'One line per amendment: number, date, judge, summary', group: 'Amendments', example: 'Amendment 1, signed December 8, 2023 by Hon. Jane Smith: added detached garage' },
+  { tag: '#amendments', label: 'Loop start: repeat for each amendment ({/amendments} ends)', group: 'Amendments', example: '' },
+  { tag: 'amendmentNumber', label: '(inside amendments loop) number', group: 'Amendments', example: '1' },
+  { tag: 'amendmentDate', label: '(inside amendments loop) date signed', group: 'Amendments', example: 'December 8, 2023' },
+  { tag: 'amendmentJudge', label: '(inside amendments loop) judge', group: 'Amendments', example: 'Hon. Jane Smith' },
+  { tag: 'amendmentSummary', label: '(inside amendments loop) what changed', group: 'Amendments', example: 'Added the detached garage' },
+  { tag: 'amendmentScope', label: '(inside amendments loop) added places / items', group: 'Amendments', example: 'Detached garage at 123 Main St' },
   { tag: 'notes', label: 'Notes', group: 'Warrant', example: '' },
   { tag: 'assignedTo', label: 'Assigned investigator', group: 'Warrant', example: 'Det. A. Smith' },
   { tag: 'officerName', label: 'Your full name', group: 'Officer & agency', example: 'Aaron Cuddeback' },
   { tag: 'officerTitle', label: 'Your title / rank', group: 'Officer & agency', example: 'Detective' },
   { tag: 'officerTitleName', label: 'Title + name', group: 'Officer & agency', example: 'Detective Aaron Cuddeback' },
   { tag: 'badgeNumber', label: 'Badge / ID number', group: 'Officer & agency', example: 'K1158' },
+  { tag: 'signature', label: 'Your signature image (Settings > Signature). Put it on its own line above the signature line.', group: 'Officer & agency', example: '(image)' },
   { tag: 'officerPhone', label: 'Phone', group: 'Officer & agency', example: '(530) 555-0100' },
   { tag: 'officerEmail', label: 'Email', group: 'Officer & agency', example: 'name@agency.gov' },
   { tag: 'unit', label: 'Unit / division', group: 'Officer & agency', example: 'High Tech Unit' },
@@ -118,6 +129,7 @@ export function buildTemplateData(
   now: Date = new Date(),
 ): Record<string, unknown> {
   const p = s.profile;
+  const amendments = [...(w.amendments ?? [])].sort((a, b) => a.number - b.number);
   const items = (w.items ?? []).filter((i) => i.description?.trim());
   const itemsText = items.length
     ? items.map(formatItem).join('\n')
@@ -132,6 +144,7 @@ export function buildTemplateData(
     filed: w.filedDate,
     notification: w.notificationServedDate,
     today: todayISO(now),
+    amended: amendments.length ? amendments[amendments.length - 1].signedDate : null,
   };
 
   const data: Record<string, unknown> = {
@@ -160,6 +173,20 @@ export function buildTemplateData(
       };
     }),
     investigationNature: w.investigationNature,
+    amendmentCount: String(amendments.length),
+    asAmendedText: amendments.length
+      ? `as amended on ${amendments.map((a) => formatDate(a.signedDate, 'MMMM D, YYYY')).join(' and ')}`
+      : '',
+    amendmentsText: amendments
+      .map((a) => `Amendment ${a.number}, signed ${formatDate(a.signedDate, 'MMMM D, YYYY')}${a.judge ? ` by ${a.judge}` : ''}: ${a.summary}`)
+      .join('\n'),
+    amendments: amendments.map((a) => ({
+      amendmentNumber: String(a.number),
+      amendmentDate: formatDate(a.signedDate, 'MMMM D, YYYY'),
+      amendmentJudge: a.judge,
+      amendmentSummary: a.summary,
+      amendmentScope: a.addedScope,
+    })),
     notes: w.notes,
     assignedTo: w.assignedTo,
     officerName: p.fullName,

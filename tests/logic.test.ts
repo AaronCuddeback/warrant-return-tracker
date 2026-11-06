@@ -85,3 +85,24 @@ describe('calendar export', () => {
     expect(ics.split('\r\n').every((l) => Buffer.byteLength(l) <= 75)).toBe(true);
   });
 });
+
+describe('amendment template fields', () => {
+  it('exposes amendment text and dates', async () => {
+    const { buildTemplateData, sampleWarrant: sw } = await import('../src/shared/fields');
+    const { defaultSettingsForTest } = await import('./helpers');
+    const w = {
+      ...sw(),
+      amendments: [
+        { id: 1, warrantId: 0, number: 1, signedDate: '2023-12-08', judge: 'Hon. Jane Smith', summary: 'Added the detached garage', addedScope: 'Detached garage', previousDueDate: null, newDueDate: null, attachmentId: null, createdAt: '', updatedAt: '' },
+      ],
+    };
+    const d = buildTemplateData(w, defaultSettingsForTest());
+    expect(d.amendmentCount).toBe('1');
+    expect(d.asAmendedText).toBe('as amended on December 8, 2023');
+    expect(d.amendedDateLegal).toBe('8th day of December, 2023');
+    expect(d.amendmentsText).toBe('Amendment 1, signed December 8, 2023 by Hon. Jane Smith: Added the detached garage');
+    const none = buildTemplateData(sw(), defaultSettingsForTest());
+    expect(none.asAmendedText).toBe('');
+    expect(none.amendmentCount).toBe('0');
+  });
+});

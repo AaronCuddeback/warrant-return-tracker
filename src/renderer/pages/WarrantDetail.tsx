@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   ArrowLeft, FileOutput, Megaphone, CheckCircle2, Circle, Pencil, Save, X, Upload, Download, ExternalLink, Trash2, ShieldCheck,
-  CalendarPlus, BellRing, BellOff, CalendarClock, FileText, Package, RotateCcw, PlayCircle, History, Paperclip, Eye,
+  CalendarPlus, BellRing, BellOff, CalendarClock, FileText, Package, RotateCcw, PlayCircle, History, Paperclip, Eye, FileSignature,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { navigate } from '../lib/router';
@@ -10,6 +10,7 @@ import { Button, Countdown, EmptyState, Field, FileIcon, Input, Modal, Select, S
 import { WarrantForm } from '../components/WarrantForm';
 import { PdfViewer, DocxViewer } from '../components/Viewers';
 import { GenerateWizard } from './GenerateWizard';
+import { AmendmentModal, AmendmentsCard } from '../components/Amendments';
 import { addDays, daysUntil, formatDate, relativeDays, todayISO, urgencyOf } from '../../shared/dates';
 import { formatItem } from '../../shared/fields';
 import { ATTACHMENT_KINDS, WARRANT_TYPES, type Attachment, type AttachmentKind, type Warrant, type WarrantInput } from '../../shared/types';
@@ -20,6 +21,7 @@ export function WarrantDetail({ id, tab = 'overview', action }: { id: number; ta
   const { data: atts } = useData(() => api.listAttachments(id), [id]);
   const [wizard, setWizard] = useState<'return' | 'notification' | null>(null);
   const [extend, setExtend] = useState(false);
+  const [amend, setAmend] = useState(false);
 
   useEffect(() => {
     if (action === 'return' || action === 'notification') setWizard(action);
@@ -107,11 +109,13 @@ export function WarrantDetail({ id, tab = 'overview', action }: { id: number; ta
             <StatusBadge status={w.status} />
             <span className="badge">{WARRANT_TYPES.find((t) => t.value === w.warrantType)?.label}</span>
             {w.provider && <span className="badge blue">{w.provider}</span>}
+            {(w.amendments?.length ?? 0) > 0 && <span className="badge orange">Amended{w.amendments!.length > 1 ? ` x${w.amendments!.length}` : ''}</span>}
             {w.tags.split(',').map((t) => t.trim()).filter(Boolean).map((t) => <span key={t} className="badge violet">{t}</span>)}
           </div>
         </div>
         <div className="col" style={{ alignItems: 'flex-end' }}>
           <div className="row">
+            {w.status !== 'filed' && <Button icon={<FileSignature size={16} />} onClick={() => setAmend(true)}>Amend</Button>}
             {w.status === 'pending' && <Button icon={<PlayCircle size={16} />} onClick={markExecuted}>Mark executed</Button>}
             {w.status !== 'filed' && <Button variant="primary" size="lg" icon={<FileOutput size={17} />} onClick={() => setWizard('return')}>Generate return</Button>}
             {w.status === 'filed' && <Button icon={<RotateCcw size={16} />} onClick={reopen}>Reopen</Button>}
@@ -177,6 +181,7 @@ export function WarrantDetail({ id, tab = 'overview', action }: { id: number; ta
 
       {wizard && <GenerateWizard warrant={w} kind={wizard} onClose={() => { setWizard(null); if (action) navigate(`/warrant/${w.id}`); }} />}
       {extend && <ExtendModal w={w} onClose={() => setExtend(false)} />}
+      {amend && <AmendmentModal w={w} onClose={() => setAmend(false)} />}
     </div>
   );
 }
@@ -274,6 +279,7 @@ function Overview({ w }: { w: Warrant }) {
           {kv.map(([k, v]) => [<div key={k + 'k'}>{k}</div>, <div key={k + 'v'}>{v}</div>])}
         </div>
       </div>
+      <AmendmentsCard w={w} />
       <div className="card">
         <div className="card-head"><h3>Searched</h3></div>
         <div className="card-body pre">{w.locations || <span className="muted">Not entered yet - add it when generating the return.</span>}</div>

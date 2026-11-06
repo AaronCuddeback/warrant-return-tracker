@@ -126,7 +126,7 @@ export function WarrantsPage({ view }: { view: View }) {
                     <td className="small muted">{w.provider || WARRANT_TYPES.find((t) => t.value === w.warrantType)?.label}</td>
                     <td className="small">{w.judge}</td>
                     <td className="small nowrap">{formatDate(w.signedDate, fmt)}</td>
-                    <td><StatusBadge status={w.status} /></td>
+                    <td><span className="row" style={{ gap: 5 }}><StatusBadge status={w.status} />{w.amendmentCount > 0 && <span className="badge orange" title={`${w.amendmentCount} amendment(s)`}>Amended</span>}</span></td>
                     <td className="nowrap muted">
                       <span className="row" style={{ gap: 8 }}>
                         {w.attachmentCount > 0 && <span title={`${w.attachmentCount} document(s)`} className="row tiny" style={{ gap: 2 }}><Paperclip size={13} />{w.attachmentCount}</span>}
