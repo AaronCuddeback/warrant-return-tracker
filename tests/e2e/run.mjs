@@ -79,7 +79,7 @@ const expect = (cond, msg) => { if (!cond) { fails.push(msg); console.log('FAIL'
 // Stub native dialogs / shell in the main process
 await app.evaluate(({ dialog, shell }, { pdf, docs }) => {
   globalThis.__nextOpen = pdf;
-  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [globalThis.__nextOpen] });
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [].concat(globalThis.__nextOpen) });
   dialog.showSaveDialog = async (_w, o) => {
     const opts = o || _w;
     const name = String(opts.defaultPath || 'out').split(/[\\/]/).pop();
@@ -224,16 +224,32 @@ expect(await page.locator('.phrase-menu .phrase-item', { hasText: 'Electronic da
 expect(await page.locator('.wizard .callout.violet', { hasText: 'Electronic data from seized device(s)' }).count() === 0, 'seized-device language not suggested for a provider warrant');
 await shot('06q-saved-text-menu');
 await page.click('.wizard button:has-text("Saved text")');
-// property receipt: attach a PDF, it becomes page 2 and "See attached" is added to the list
-const receiptPdf = join(out, 'Property Receipt SW-2026-0311.pdf');
-writeFileSync(receiptPdf, makePdf(['PROPERTY RECEIPT', 'Case 26-004417  Warrant SW-2026-0311', '', 'Item 1  Digital storage media (Google records)  Qty 1', 'Item 2  Certificates of authenticity  Qty 2', '', 'Received by: Det. Example   Date: 03/09/2026']));
-await app.evaluate((_e, p) => { globalThis.__nextOpen = p; }, receiptPdf);
-await page.click('.receipt-card button:has-text("Attach receipt")');
-await page.waitForSelector('.receipt-card label:has-text("Add to the return as page 2")', { timeout: 15000 }).catch(() => {});
-await page.waitForTimeout(1500);
-expect(await page.locator('.receipt-card label:has-text("Add to the return as page 2") input').isChecked().catch(() => false), 'receipt attached and set to page 2');
+// property receipts: attach two sheets at once; all are added after the return, in the order listed
+const receiptPdf = join(out, 'Property Receipt 1 SW-2026-0311.pdf');
+const receiptPdf2 = join(out, 'Property Receipt 2 SW-2026-0311.pdf');
+writeFileSync(receiptPdf, makePdf(['PROPERTY RECEIPT - SHEET 1 OF 2', 'Case 26-004417  Warrant SW-2026-0311', '', 'Item 1  Digital storage media (Google records)  Qty 1', '', 'Received by: Det. Example   Date: 03/09/2026']));
+writeFileSync(receiptPdf2, makePdf(['PROPERTY RECEIPT - SHEET 2 OF 2', 'Case 26-004417  Warrant SW-2026-0311', '', 'Item 2  Certificates of authenticity  Qty 2', '', 'Received by: Det. Example   Date: 03/09/2026']));
+await app.evaluate((_e, p) => { globalThis.__nextOpen = p; }, [receiptPdf, receiptPdf2]);
+await page.click('.receipt-card button:has-text("Attach receipts")');
+await page.waitForSelector('.receipt-row:has-text("page 3")', { timeout: 15000 }).catch(() => {});
+await page.waitForTimeout(800);
+const rowText = async () => page.locator('.receipt-row').evaluateAll((els) => els.map((e) => e.textContent));
+let rr = await rowText();
+expect(rr.length === 2 && rr[0].includes('Receipt 1') && rr[0].includes('page 2') && rr[1].includes('Receipt 2') && rr[1].includes('page 3'), `both receipts attached, as pages 2 and 3 (${rr.join(' | ')})`);
 const withReceipt = await page.locator('.wizard .item-row textarea').evaluateAll((els) => els.map((e) => e.value));
-expect(withReceipt.includes('See attached Property Receipt, incorporated herein by reference.'), 'see-attached text added to the property list');
+expect(withReceipt.filter((t) => t === 'See attached Property Receipt, incorporated herein by reference.').length === 1, 'see-attached text added to the property list once');
+// put sheet 2 first
+await page.locator('.receipt-row', { hasText: 'Receipt 2' }).locator('button[title="Move up"]').click();
+await page.waitForTimeout(300);
+rr = await rowText();
+expect(rr[0].includes('Receipt 2') && rr[0].includes('page 2') && rr[1].includes('Receipt 1') && rr[1].includes('page 3'), `receipts reordered (${rr.join(' | ')})`);
+// leaving one out and back in renumbers the pages
+await page.locator('.receipt-row', { hasText: 'Receipt 2' }).locator('label.toggle').click();
+await page.waitForTimeout(300);
+rr = await rowText();
+expect(rr[0].includes('not added') && rr[1].includes('page 2'), `unticked receipt is left out (${rr.join(' | ')})`);
+await page.locator('.receipt-row', { hasText: 'Receipt 2' }).locator('label.toggle').click();
+await page.waitForTimeout(600);
 await page.locator('.receipt-card').scrollIntoViewIfNeeded();
 await shot('06r-property-receipt');
 await app.evaluate((_e, p) => { globalThis.__nextOpen = p; }, warrantPdf);
@@ -242,7 +258,7 @@ await page.waitForTimeout(2500);
 const signToggle = await page.locator('.wizard label:has-text("Sign with my saved signature") input').isChecked().catch(() => false);
 expect(signToggle, 'wizard offers signing, on by default');
 await shot('06-wizard-preview');
-expect(await page.locator('.wizard .callout', { hasText: 'is added as page 2' }).count() === 1, 'save step confirms the receipt is page 2');
+expect(await page.locator('.wizard .callout', { hasText: '2 property receipts are added as pages 2-3' }).count() === 1, 'save step confirms the receipts are pages 2-3');
 await page.evaluate(() => { for (const el of document.querySelectorAll('.wizard .right *')) if (el.scrollHeight > el.clientHeight + 20) el.scrollTop = el.scrollHeight; });
 await page.waitForTimeout(600);
 await shot('06s-preview-receipt-page');
@@ -268,7 +284,8 @@ if (files[0]) {
   expect(text.includes('As amended (Amendment 1, signed March 5, 2026)'), 'return lists the amended scope');
   expect(text.includes('4. See attached Property Receipt, incorporated herein by reference.'), 'return has the see-attached receipt line');
   const docXml = zipOut.file('word/document.xml').asText();
-  expect(docXml.includes('r:embed="rIdWrtPage1"') && !!zipOut.file('word/media/wrt-page-1.jpeg') && (docXml.match(/<w:sectPr[ >]/g) || []).length === 2, 'return has the receipt as page 2 (own section, JPEG page)');
+  expect(docXml.includes('r:embed="rIdWrtPage1"') && docXml.includes('r:embed="rIdWrtPage2"') && !!zipOut.file('word/media/wrt-page-2.jpeg') && !docXml.includes('rIdWrtPage3') && (docXml.match(/<w:sectPr[ >]/g) || []).length === 2, 'return has both receipts as pages 2 and 3 (own section, JPEG pages)');
+  writeFileSync(join(out, 'receipt-page-2.jpeg'), zipOut.file('word/media/wrt-page-2.jpeg').asNodeBuffer());
   writeFileSync(join(out, 'receipt-page-1.jpeg'), zipOut.file('word/media/wrt-page-1.jpeg').asNodeBuffer());
   writeFileSync(join(out, 'return-text.txt'), text);
 }
@@ -278,9 +295,10 @@ expect(await page.locator('.detail-head .badge:has-text("Filed")').count() > 0, 
 await page.click('.tab:has-text("Activity")');
 await shot('08-activity');
 const receiptAudit = await page.evaluate(() => window.wrt.audit(1));
-expect(JSON.stringify(receiptAudit).includes('Property receipt Property Receipt SW-2026-0311.pdf added to'), 'audit log records the receipt added to the return');
+const auditText = JSON.stringify(receiptAudit);
+expect(/Property receipt Property Receipt 2 SW-2026-0311.pdf added to [^"]* as page 2/.test(auditText) && /Property receipt Property Receipt 1 SW-2026-0311.pdf added to [^"]* as page 3/.test(auditText), 'audit log records each receipt and its page in the return');
 const attsAfter = await page.evaluate(() => window.wrt.listAttachments(1));
-expect(attsAfter.some((a) => a.kind === 'receipt'), 'receipt stored with the warrant as a Property receipt');
+expect(attsAfter.filter((a) => a.kind === 'receipt').length === 2, 'both receipts stored with the warrant as Property receipts');
 await page.click('.tab:has-text("Documents")');
 await page.waitForTimeout(1500);
 await shot('09-documents');

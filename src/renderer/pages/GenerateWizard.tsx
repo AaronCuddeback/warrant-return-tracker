@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FileOutput, Plus, Trash2, ClipboardPaste, CheckCircle2, FolderOpen, ExternalLink, ChevronLeft, ChevronRight, Megaphone, ListChecks, AlignLeft, PenLine, Library, BookmarkPlus, Sparkles, Receipt, Paperclip } from 'lucide-react';
+import { FileOutput, Plus, Trash2, ClipboardPaste, CheckCircle2, FolderOpen, ExternalLink, ChevronLeft, ChevronRight, Megaphone, ListChecks, AlignLeft, PenLine, Library, BookmarkPlus, Sparkles, Receipt, Paperclip, ChevronUp, ChevronDown } from 'lucide-react';
 import { navigate } from '../lib/router';
 import { api } from '../lib/api';
 import { useData, useStore } from '../lib/store';
 import { Button, Field, Input, Modal, Select, Textarea, Toggle, Seg, confirmDialog } from '../components/ui';
 import { DocxViewer } from '../components/Viewers';
 import { isISODate, todayISO } from '../../shared/dates';
-import { DEFAULT_PHRASES, SEE_RECEIPT_PHRASE_ID, type ReturnItem, type SavedPhrase, type TemplateKind, type Warrant, type WarrantInput } from '../../shared/types';
+import { DEFAULT_PHRASES, SEE_RECEIPT_PHRASE_ID, type Attachment, type ReturnItem, type SavedPhrase, type TemplateKind, type Warrant, type WarrantInput } from '../../shared/types';
 import { receiptPages } from '../lib/receipt';
 
 export function GenerateWizard({ warrant, kind, onClose }: { warrant: Warrant; kind: TemplateKind; onClose: () => void }) {
@@ -46,45 +46,83 @@ export function GenerateWizard({ warrant, kind, onClose }: { warrant: Warrant; k
   const [done, setDone] = useState<{ filePath?: string; sha256: string } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // ---- property receipt: stored with the warrant, its pages added after the return ----
+  // ---- property receipts: stored with the warrant; every included one is added after the return, in order ----
   const { data: attachments } = useData(() => api.listAttachments(warrant.id), [warrant.id]);
-  const receipts = useMemo(() => (attachments ?? []).filter((a) => a.kind === 'receipt').sort((a, b) => b.id - a.id), [attachments]);
-  const [receiptId, setReceiptId] = useState<number | null>(null);
-  const [useReceipt, setUseReceipt] = useState(true);
-  const [receiptPreview, setReceiptPreview] = useState<{ id: number; pages: Uint8Array[] } | null>(null);
-  const [receiptBusy, setReceiptBusy] = useState(false);
-  const [receiptErr, setReceiptErr] = useState('');
+  const receipts = useMemo(() => (attachments ?? []).filter((a) => a.kind === 'receipt'), [attachments]);
+  const [receiptOrder, setReceiptOrder] = useState<number[]>([]);
+  const [excluded, setExcluded] = useState<number[]>([]);
+  const [receiptPreviews, setReceiptPreviews] = useState<Record<number, Uint8Array[]>>({});
+  const [receiptErrs, setReceiptErrs] = useState<Record<number, string>>({});
+  const loadingReceipts = useRef(new Set<number>());
+  // Keep the order the officer set; receipts attached later go to the end (oldest first).
   useEffect(() => {
-    if (kind === 'return' && receiptId === null && receipts.length) setReceiptId(receipts[0].id);
-  }, [kind, receipts, receiptId]);
+    const ids = receipts.map((a) => a.id).sort((a, b) => a - b);
+    setReceiptOrder((cur) => [...cur.filter((id) => ids.includes(id)), ...ids.filter((id) => !cur.includes(id))]);
+  }, [receipts]);
+  // Render each receipt's pages once (low resolution for the live preview).
   useEffect(() => {
-    if (receiptId === null) return;
-    let alive = true;
-    setReceiptBusy(true);
-    setReceiptErr('');
-    (async () => {
-      try {
-        const bytes = await api.readAttachment(receiptId);
-        if (!bytes) throw new Error('The receipt file is missing from the data folder.');
-        const pages = await receiptPages(bytes, 96);
-        if (alive) setReceiptPreview({ id: receiptId, pages });
-      } catch (e) {
-        if (alive) {
-          setReceiptPreview(null);
-          setReceiptErr(`Could not read the receipt: ${String((e as Error)?.message ?? e)}`);
+    if (kind !== 'return') return;
+    for (const a of receipts) {
+      if (receiptPreviews[a.id] || receiptErrs[a.id] || loadingReceipts.current.has(a.id)) continue;
+      loadingReceipts.current.add(a.id);
+      void (async () => {
+        try {
+          const bytes = await api.readAttachment(a.id);
+          if (!bytes) throw new Error('the file is missing from the data folder');
+          const pages = await receiptPages(bytes, 96);
+          setReceiptPreviews((m) => ({ ...m, [a.id]: pages }));
+        } catch (e) {
+          setReceiptErrs((m) => ({ ...m, [a.id]: String((e as Error)?.message ?? e) }));
+        } finally {
+          loadingReceipts.current.delete(a.id);
         }
-      } finally {
-        if (alive) setReceiptBusy(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [receiptId]);
-  const receiptActive = kind === 'return' && useReceipt && !!receiptPreview && receiptPreview.id === receiptId;
-  const receiptCount = receiptActive ? receiptPreview!.pages.length : 0;
-  const receiptRange = receiptCount > 1 ? `pages 2-${receiptCount + 1}` : 'page 2';
-  const selectedReceipt = receipts.find((a) => a.id === receiptId);
+      })();
+    }
+  }, [kind, receipts, receiptPreviews, receiptErrs]);
+  const orderedReceipts = useMemo(
+    () => receiptOrder.map((id) => receipts.find((a) => a.id === id)).filter((a): a is Attachment => !!a),
+    [receiptOrder, receipts],
+  );
+  const includedReceipts = useMemo(
+    () => (kind === 'return' ? orderedReceipts.filter((a) => !excluded.includes(a.id) && !receiptErrs[a.id]) : []),
+    [kind, orderedReceipts, excluded, receiptErrs],
+  );
+  const previewReceipts = useMemo(
+    () => includedReceipts.filter((a) => receiptPreviews[a.id]).map((a) => ({ attachmentId: a.id, pages: receiptPreviews[a.id] })),
+    [includedReceipts, receiptPreviews],
+  );
+  // Page numbers each included receipt will occupy (the return is page 1).
+  const pageLabel = (from: number, n: number) => (n > 1 ? `pages ${from}-${from + n - 1}` : `page ${from}`);
+  const receiptRanges = useMemo(() => {
+    const out: Record<number, string> = {};
+    let page = 2;
+    for (const a of includedReceipts) {
+      const n = receiptPreviews[a.id]?.length;
+      if (!n) break;
+      out[a.id] = pageLabel(page, n);
+      page += n;
+    }
+    return { out, total: page - 2 };
+  }, [includedReceipts, receiptPreviews]);
+  const moveReceipt = (id: number, d: -1 | 1) =>
+    setReceiptOrder((o) => {
+      const i = o.indexOf(id);
+      const j = i + d;
+      if (i < 0 || j < 0 || j >= o.length) return o;
+      const n = [...o];
+      [n[i], n[j]] = [n[j], n[i]];
+      return n;
+    });
+  const removeReceipt = async (a: Attachment) => {
+    const yes = await confirmDialog({
+      title: `Remove ${a.originalName}?`,
+      body: "It is removed from this warrant's documents and the removal is recorded in the audit log. Returns already generated are not changed.",
+      ok: 'Remove', danger: true,
+    });
+    if (!yes) return;
+    const r = await api.removeAttachment(a.id);
+    if (!r.ok) toast('err', r.error || 'Could not remove the receipt');
+  };
 
   const items = patch.items ?? [];
   const setItems = (it: ReturnItem[]) => setPatch((p) => ({ ...p, items: it }));
@@ -96,7 +134,7 @@ export function GenerateWizard({ warrant, kind, onClose }: { warrant: Warrant; k
     timer.current = setTimeout(async () => {
       const r = await api.generateDocument({
         warrantId: warrant.id, templateId, patch: effectivePatch, preview: true, sign,
-        receipt: receiptActive ? { attachmentId: receiptPreview!.id, pages: receiptPreview!.pages } : undefined,
+        receipts: previewReceipts.length ? previewReceipts : undefined,
       });
       if (r.ok && r.data?.bytes) {
         setPreview(r.data.bytes);
@@ -104,7 +142,7 @@ export function GenerateWizard({ warrant, kind, onClose }: { warrant: Warrant; k
       } else setPreviewErr(r.error || 'Preview failed');
     }, 450);
     return () => clearTimeout(timer.current);
-  }, [effectivePatch, templateId, warrant.id, sign, receiptActive, receiptPreview]);
+  }, [effectivePatch, templateId, warrant.id, sign, previewReceipts]);
 
   const steps = kind === 'return' ? ['Search details', 'Property taken', 'Save'] : ['Notice details', 'Save'];
   const last = step === steps.length - 1;
@@ -112,15 +150,16 @@ export function GenerateWizard({ warrant, kind, onClose }: { warrant: Warrant; k
 
   const save = async () => {
     setSaving(true);
-    let receipt: { attachmentId: number; pages: Uint8Array[] } | undefined;
-    if (receiptActive) {
+    // Final pages at print resolution, in the order listed.
+    const receiptsOut: { attachmentId: number; pages: Uint8Array[] }[] = [];
+    for (const a of includedReceipts) {
       try {
-        const bytes = await api.readAttachment(receiptPreview!.id);
-        if (!bytes) throw new Error('The receipt file is missing from the data folder.');
-        receipt = { attachmentId: receiptPreview!.id, pages: await receiptPages(bytes, 200) };
+        const bytes = await api.readAttachment(a.id);
+        if (!bytes) throw new Error('the file is missing from the data folder');
+        receiptsOut.push({ attachmentId: a.id, pages: await receiptPages(bytes, 200) });
       } catch (e) {
         setSaving(false);
-        toast('err', `Could not add the property receipt: ${String((e as Error)?.message ?? e)}`);
+        toast('err', `Could not add property receipt ${a.originalName}: ${String((e as Error)?.message ?? e)}`);
         return;
       }
     }
@@ -129,7 +168,7 @@ export function GenerateWizard({ warrant, kind, onClose }: { warrant: Warrant; k
       markFiled: kind === 'return' ? markFiled : undefined,
       markNoticeServed: kind === 'notification' ? markServed : undefined,
       sign,
-      receipt,
+      receipts: receiptsOut.length ? receiptsOut : undefined,
     });
     setSaving(false);
     if (r.canceled) return;
@@ -160,19 +199,15 @@ export function GenerateWizard({ warrant, kind, onClose }: { warrant: Warrant; k
 
   const seePhrase = phrases.find((p) => p.id === SEE_RECEIPT_PHRASE_ID) ?? DEFAULT_PHRASES.find((p) => p.id === SEE_RECEIPT_PHRASE_ID)!;
 
-  const attachReceipt = async () => {
-    const path = await api.pickFile([{ name: 'Property receipt (PDF or image)', extensions: ['pdf', 'jpg', 'jpeg', 'png'] }]);
-    if (!path) return;
-    const r = await api.addAttachments(warrant.id, 'receipt', [path]);
+  const attachReceipts = async () => {
+    const r = await api.addAttachments(warrant.id, 'receipt');
+    if (r.canceled) return;
     if (!r.ok) {
       toast('err', r.error || 'Could not attach the receipt');
       return;
     }
-    const newest = (await api.listAttachments(warrant.id)).filter((a) => a.kind === 'receipt').sort((a, b) => b.id - a.id)[0];
-    if (newest) setReceiptId(newest.id);
-    setUseReceipt(true);
     if (!inUse(seePhrase)) insertPhrase(seePhrase);
-    else toast('ok', 'Property receipt attached.');
+    toast('ok', r.data === 1 ? 'Property receipt attached.' : `${r.data} property receipts attached.`);
   };
 
   const savePhrase = async (text: string) => {
@@ -331,24 +366,34 @@ export function GenerateWizard({ warrant, kind, onClose }: { warrant: Warrant; k
               <div className="receipt-card">
                 <div className="row">
                   <Receipt size={16} color="var(--accent)" style={{ flex: 'none' }} />
-                  <b className="grow">Property receipt</b>
-                  <Button size="sm" icon={<Paperclip size={14} />} onClick={() => void attachReceipt()}>{receipts.length ? 'Attach another' : 'Attach receipt'}</Button>
+                  <b className="grow">Property receipts</b>
+                  <Button size="sm" icon={<Paperclip size={14} />} onClick={() => void attachReceipts()}>{receipts.length ? 'Attach more' : 'Attach receipts'}</Button>
                 </div>
                 {receipts.length === 0 ? (
-                  <div className="muted small">Attach the property receipt (PDF, JPG or PNG). Its pages are added to the return after page 1, and "{seePhrase.text}" goes in the property list.</div>
+                  <div className="muted small">Attach the property receipt sheets (PDF, JPG or PNG). You can select several files at once. Their pages are added to the return after page 1 in the order listed, and "{seePhrase.text}" goes in the property list.</div>
                 ) : (
-                  <div className="col" style={{ gap: 8 }}>
-                    {receipts.length > 1 ? (
-                      <Select value={receiptId ?? ''} onChange={(e) => setReceiptId(Number(e.target.value))}>
-                        {receipts.map((a) => <option key={a.id} value={a.id}>{a.originalName} (added {new Date(a.addedAt).toLocaleDateString()})</option>)}
-                      </Select>
-                    ) : (
-                      <div className="small mono" style={{ wordBreak: 'break-all' }}>{selectedReceipt?.originalName}</div>
-                    )}
-                    <Toggle checked={useReceipt} onChange={setUseReceipt}
-                      label={receiptBusy ? 'Preparing receipt pages...' : receiptPreview && receiptPreview.pages.length > 1 ? `Add to the return as pages 2-${receiptPreview.pages.length + 1}` : 'Add to the return as page 2'} />
-                    {receiptErr && <div className="callout danger small">{receiptErr}</div>}
-                    {useReceipt && !inUse(seePhrase) && (
+                  <div className="col" style={{ gap: 6 }}>
+                    {orderedReceipts.map((a, i) => {
+                      const on = !excluded.includes(a.id);
+                      const n = receiptPreviews[a.id]?.length;
+                      const status = receiptErrs[a.id]
+                        ? `Can't read this file: ${receiptErrs[a.id]}`
+                        : !n ? 'Preparing pages...'
+                        : on ? `${n} page${n > 1 ? 's' : ''} · ${receiptRanges.out[a.id] ?? 'waiting for the receipts above'}`
+                        : `${n} page${n > 1 ? 's' : ''} · not added to this return`;
+                      return (
+                        <div key={a.id} className={`receipt-row ${on && !receiptErrs[a.id] ? '' : 'off'}`}>
+                          <Toggle checked={on && !receiptErrs[a.id]} disabled={!!receiptErrs[a.id]}
+                            onChange={(v) => setExcluded((x) => (v ? x.filter((id) => id !== a.id) : [...x, a.id]))}
+                            label={<span className="col" style={{ gap: 1, minWidth: 0 }}><span className="small receipt-name">{a.originalName}</span><span className={`tiny ${receiptErrs[a.id] ? '' : 'muted'}`} style={receiptErrs[a.id] ? { color: 'var(--red)' } : undefined}>{status}</span></span>} />
+                          <span className="spacer" />
+                          <Button size="sm" variant="ghost" iconOnly icon={<ChevronUp size={14} />} title="Move up" disabled={i === 0} onClick={() => moveReceipt(a.id, -1)} />
+                          <Button size="sm" variant="ghost" iconOnly icon={<ChevronDown size={14} />} title="Move down" disabled={i === orderedReceipts.length - 1} onClick={() => moveReceipt(a.id, 1)} />
+                          <Button size="sm" variant="ghost" iconOnly icon={<Trash2 size={14} />} title="Remove from this warrant" onClick={() => void removeReceipt(a)} />
+                        </div>
+                      );
+                    })}
+                    {includedReceipts.length > 0 && !inUse(seePhrase) && (
                       <Button size="sm" icon={<Plus size={13} />} onClick={() => insertPhrase(seePhrase)} style={{ alignSelf: 'flex-start' }}>Add "{seePhrase.name}" to the list</Button>
                     )}
                   </div>
@@ -388,10 +433,14 @@ export function GenerateWizard({ warrant, kind, onClose }: { warrant: Warrant; k
                   </div>
                 )
               )}
-              {receiptActive && (
+              {receiptRanges.total > 0 && (
                 <div className="callout small">
                   <Receipt size={16} color="var(--accent)" style={{ flex: 'none' }} />
-                  <div>Property receipt <b>{selectedReceipt?.originalName}</b> is added as {receiptRange}.</div>
+                  <div>
+                    {includedReceipts.length === 1
+                      ? <>Property receipt <b>{includedReceipts[0].originalName}</b> is added as {pageLabel(2, receiptRanges.total)}.</>
+                      : <>{includedReceipts.length} property receipts are added as {pageLabel(2, receiptRanges.total)}, in the order listed.</>}
+                  </div>
                 </div>
               )}
               {kind === 'return' && (

@@ -338,8 +338,8 @@ export interface GenerateRequest {
   markNoticeServed?: boolean;
   /** Insert the stored signature image at {signature} tags. */
   sign?: boolean;
-  /** Property receipt added after the return: the stored attachment and its pages as PNG/JPEG images. */
-  receipt?: { attachmentId: number; pages: Uint8Array[] };
+  /** Property receipts added after the return, in this order: each stored attachment and its pages as PNG/JPEG images. */
+  receipts?: { attachmentId: number; pages: Uint8Array[] }[];
 }
 
 export interface GeneratedDoc {

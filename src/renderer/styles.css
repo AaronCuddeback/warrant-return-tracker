@@ -433,3 +433,7 @@ table.t { width: 100%; border-collapse: separate; border-spacing: 0; }
 .input.item-loc { height: 30px; font-size: 12px; }
 .wizard .seg button { white-space: nowrap; }
 .receipt-card { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2); }
+.receipt-row { display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 8px; border: 1px solid var(--border); border-radius: 9px; background: var(--panel); }
+.receipt-row.off { opacity: .6; }
+.receipt-row .toggle { min-width: 0; }
+.receipt-name { word-break: break-all; font-weight: 600; }

@@ -61,8 +61,8 @@ async function generate(req: GenerateRequest): Promise<Result<{ filePath?: strin
   const s = getSettings();
   const data = buildTemplateData(merged, s, req.extra);
   const sig = signatureFor(req.sign);
-  const receipt = receiptFor(req, w.id);
-  const bytes = renderDocx(tpl.readTemplate(t), data, t.mapping, sig, receipt?.pages);
+  const receipts = receiptsFor(req, w.id);
+  const bytes = renderDocx(tpl.readTemplate(t), data, t.mapping, sig, receipts.flatMap((r) => r.pages));
   if (req.preview) return ok({ bytes: new Uint8Array(bytes), sha256: repo.sha256(bytes) });
 
   const fileName = fileNameFromPattern(t.outputPattern, data, `${t.kind}-${w.warrantNumber || w.id}`);
@@ -82,9 +82,12 @@ async function generate(req: GenerateRequest): Promise<Result<{ filePath?: strin
   const attachmentId = tx(() => {
     const id = repo.storeAttachmentBytes(w.id, kind, fileName, bytes, true, t.name);
     if (sig && usesSignature(tpl.readTemplate(t))) repo.audit(w.id, 'sign', `Stored signature applied to ${fileName}`);
-    if (receipt) {
-      const n = receipt.pages.length;
-      repo.audit(w.id, 'receipt', `Property receipt ${receipt.att.originalName} added to ${fileName} (${n} page${n > 1 ? 's' : ''})`, { sha256: receipt.att.sha256 });
+    let page = 2;
+    for (const r of receipts) {
+      const n = r.pages.length;
+      const range = n > 1 ? `pages ${page}-${page + n - 1}` : `page ${page}`;
+      repo.audit(w.id, 'receipt', `Property receipt ${r.att.originalName} added to ${fileName} as ${range}`, { sha256: r.att.sha256 });
+      page += n;
     }
     return id;
   });
@@ -95,21 +98,27 @@ async function generate(req: GenerateRequest): Promise<Result<{ filePath?: strin
   return ok({ filePath: target, attachmentId, sha256: repo.sha256(bytes) });
 }
 
-const MAX_RECEIPT_PAGES = 40;
-const MAX_RECEIPT_BYTES = 120 * 1024 * 1024;
+const MAX_RECEIPT_PAGES = 60; // all receipts together
+const MAX_RECEIPT_BYTES = 160 * 1024 * 1024;
 
-/** Validates the receipt pages sent by the wizard against the warrant's stored attachment. */
-function receiptFor(req: GenerateRequest, warrantId: number) {
-  if (!req.receipt) return null;
-  const att = repo.getAttachment(Number(req.receipt.attachmentId));
-  if (!att || att.warrantId !== warrantId) throw new Error('The property receipt is not attached to this warrant.');
-  const list = Array.isArray(req.receipt.pages) ? req.receipt.pages : [];
-  if (!list.length) throw new Error('The property receipt has no pages to add.');
-  if (list.length > MAX_RECEIPT_PAGES) throw new Error(`The property receipt has more than ${MAX_RECEIPT_PAGES} pages.`);
-  const pages = list.map((p) => Buffer.from(p));
-  if (pages.reduce((n, p) => n + p.length, 0) > MAX_RECEIPT_BYTES) throw new Error('The property receipt is too large to add to the return.');
-  for (const p of pages) imageSize(p); // throws unless PNG/JPEG
-  return { att, pages };
+/** Validates the receipt pages sent by the wizard against the warrant's stored attachments, keeping their order. */
+function receiptsFor(req: GenerateRequest, warrantId: number) {
+  const list = Array.isArray(req.receipts) ? req.receipts : [];
+  const seen = new Set<number>();
+  const out = list.map((r) => {
+    const att = repo.getAttachment(Number(r.attachmentId));
+    if (!att || att.warrantId !== warrantId || att.kind !== 'receipt') throw new Error('A property receipt is not attached to this warrant.');
+    if (seen.has(att.id)) throw new Error(`${att.originalName} is listed twice.`);
+    seen.add(att.id);
+    const pages = (Array.isArray(r.pages) ? r.pages : []).map((p) => Buffer.from(p));
+    if (!pages.length) throw new Error(`${att.originalName} has no pages to add.`);
+    for (const p of pages) imageSize(p); // throws unless PNG/JPEG
+    return { att, pages };
+  });
+  const pageCount = out.reduce((n, r) => n + r.pages.length, 0);
+  if (pageCount > MAX_RECEIPT_PAGES) throw new Error(`The property receipts have ${pageCount} pages; at most ${MAX_RECEIPT_PAGES} can be added to a return.`);
+  if (out.reduce((n, r) => n + r.pages.reduce((m, p) => m + p.length, 0), 0) > MAX_RECEIPT_BYTES) throw new Error('The property receipts are too large to add to the return.');
+  return out;
 }
 
 function signatureFor(sign: boolean | undefined): SignatureImage | null {
@@ -209,7 +218,10 @@ const handlers: Handlers = {
   listAttachments: (id: number) => repo.listAttachments(id),
   addAttachments: async (id: number, kind: AttachmentKind, paths?: string[]) => {
     try {
-      const list = paths?.length ? paths : await openDialog([{ name: 'Documents', extensions: ['pdf', 'docx', 'doc', 'jpg', 'jpeg', 'png', 'tif', 'tiff', 'txt', 'zip', 'csv', 'xlsx'] }, { name: 'All files', extensions: ['*'] }], true);
+      const filters = kind === 'receipt'
+        ? [{ name: 'Property receipt (PDF or image)', extensions: ['pdf', 'jpg', 'jpeg', 'png'] }]
+        : [{ name: 'Documents', extensions: ['pdf', 'docx', 'doc', 'jpg', 'jpeg', 'png', 'tif', 'tiff', 'txt', 'zip', 'csv', 'xlsx'] }, { name: 'All files', extensions: ['*'] }];
+      const list = paths?.length ? paths : await openDialog(filters, true);
       if (!list.length) return { ok: false, canceled: true };
       return ok(repo.addAttachments(id, kind, list));
     } catch (e) {
