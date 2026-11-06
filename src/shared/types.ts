@@ -178,7 +178,31 @@ export const DEFAULT_PHRASES: SavedPhrase[] = [
     text: 'Digital data, records, and information associated with the target account(s), identifier(s), device(s), telephone number(s), and/or IP address(es), including account and subscriber information, communications, media, files, logs, device and connection information, location data, metadata, and other electronic records produced by the service provider pursuant to the search warrant.',
     types: ['provider'],
   },
+  {
+    id: 'device-data',
+    name: 'Electronic data from seized device(s)',
+    text: 'Digital data and electronic information collected, extracted, recovered, and/or examined from the electronic device(s) authorized for search pursuant to the search warrant and listed as property seized above, within the scope authorized by the same search warrant.',
+    types: ['device', 'premises', 'vehicle', 'person'],
+  },
 ];
+
+/** IDs of built-in phrases that settings saved before `phraseDefaultsSeen` existed (2.2.0) already offered. */
+const LEGACY_SEEN_DEFAULTS = ['provider-data'];
+
+/**
+ * Adds built-in phrases introduced in a newer version to an existing phrase list.
+ * A built-in phrase is offered once: if the user later deletes it, it is not re-added.
+ */
+export function seedNewDefaultPhrases(phrases: SavedPhrase[], seen: string[] | undefined): { phrases: SavedPhrase[]; seen: string[] } {
+  const seenSet = new Set(seen ?? LEGACY_SEEN_DEFAULTS);
+  const out = [...phrases];
+  for (const d of DEFAULT_PHRASES) {
+    if (seenSet.has(d.id)) continue;
+    if (!out.some((p) => p.id === d.id)) out.push({ ...d, types: [...d.types] });
+    seenSet.add(d.id);
+  }
+  return { phrases: out, seen: [...seenSet] };
+}
 
 export interface DueRule {
   id: string;
@@ -241,6 +265,8 @@ export interface Settings {
     updatedAt: string | null;
   };
   phrases: SavedPhrase[];
+  /** Built-in phrase IDs already offered to this user (so new built-ins appear after an upgrade). */
+  phraseDefaultsSeen?: string[];
   dueRules: DueRule[];
   holidays: ISODate[];
   backup: {

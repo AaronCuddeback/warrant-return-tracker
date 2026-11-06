@@ -4,6 +4,7 @@ import { decideReminders } from '../src/main/reminderLogic';
 import { stripJudgePrefix } from '../src/shared/fields';
 import { buildIcs } from '../src/main/ics';
 import { sampleWarrant } from '../src/shared/fields';
+import { DEFAULT_PHRASES, seedNewDefaultPhrases } from '../src/shared/types';
 
 describe('dates', () => {
   it('parses YYYY-MM-DD as a local date (no UTC off-by-one)', () => {
@@ -104,5 +105,24 @@ describe('amendment template fields', () => {
     const none = buildTemplateData(sw(), defaultSettingsForTest());
     expect(none.asAmendedText).toBe('');
     expect(none.amendmentCount).toBe('0');
+  });
+});
+
+describe('saved text defaults', () => {
+  const provider = DEFAULT_PHRASES.find((p) => p.id === 'provider-data')!;
+  it('adds the seized-device text to settings saved by 2.2.0', () => {
+    const r = seedNewDefaultPhrases([{ ...provider }], undefined);
+    expect(r.phrases.map((p) => p.id)).toEqual(['provider-data', 'device-data']);
+    expect(r.phrases[1].text.startsWith('Digital data and electronic information collected, extracted, recovered')).toBe(true);
+    expect(r.phrases[1].types).toContain('device');
+  });
+  it('does not bring back a built-in the user deleted', () => {
+    expect(seedNewDefaultPhrases([], undefined).phrases.map((p) => p.id)).toEqual(['device-data']);
+    expect(seedNewDefaultPhrases([], ['provider-data', 'device-data']).phrases).toEqual([]);
+  });
+  it('keeps user edits to a built-in', () => {
+    const edited = { ...provider, text: 'My wording' };
+    const r = seedNewDefaultPhrases([edited], ['provider-data']);
+    expect(r.phrases.find((p) => p.id === 'provider-data')!.text).toBe('My wording');
   });
 });

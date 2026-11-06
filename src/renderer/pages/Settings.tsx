@@ -263,7 +263,7 @@ function PhrasesSection({ s, up }: SecProps) {
       <div className="row wrap">
         <Button icon={<Plus size={15} />} onClick={() => up((d) => { d.phrases.push({ id: `p${Date.now()}`, name: 'New saved text', text: '', types: [] }); })}>Add saved text</Button>
         {missingDefaults.length > 0 && (
-          <Button variant="ghost" icon={<RotateCcw size={15} />} onClick={() => up((d) => { d.phrases.push(...missingDefaults.map((x) => ({ ...x, types: [...x.types] }))); })}>Restore standard provider-data text</Button>
+          <Button variant="ghost" icon={<RotateCcw size={15} />} onClick={() => up((d) => { d.phrases.push(...missingDefaults.map((x) => ({ ...x, types: [...x.types] }))); })}>Restore standard text ({missingDefaults.length})</Button>
         )}
       </div>
       <div className="muted tiny">Remember to click Save settings.</div>

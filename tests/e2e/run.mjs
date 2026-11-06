@@ -220,6 +220,8 @@ expect(rowTexts.some((t) => t.startsWith('Digital data, records, and information
 expect(await page.locator('.wizard .callout.violet', { hasText: 'Electronic data from service provider' }).count() === 0, 'suggestion hidden once added');
 await page.click('.wizard button:has-text("Saved text")');
 await page.waitForTimeout(200);
+expect(await page.locator('.phrase-menu .phrase-item', { hasText: 'Electronic data from seized device(s)' }).count() === 1, 'seized-device language available in the Saved text menu');
+expect(await page.locator('.wizard .callout.violet', { hasText: 'Electronic data from seized device(s)' }).count() === 0, 'seized-device language not suggested for a provider warrant');
 await shot('06q-saved-text-menu');
 await page.click('.wizard button:has-text("Saved text")');
 await page.click('button:has-text("Next")');
