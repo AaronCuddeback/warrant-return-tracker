@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import PizZip from 'pizzip';
-import { renderDocx, inspectDocx, fileNameFromPattern } from '../src/main/render';
+import { renderDocx, inspectDocx, fileNameFromPattern, imageSize } from '../src/main/render';
 import { buildTemplateData, sampleWarrant } from '../src/shared/fields';
 import { defaultSettingsForTest } from './helpers';
 
@@ -118,5 +118,48 @@ describe('signature image', () => {
     expect(xml).not.toContain('<w:drawing>');
     expect(xml).not.toContain('__WRT_SIGNATURE__');
     expect(docText(out)).toContain('#B123');
+  });
+});
+
+describe('property receipt pages', () => {
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  // Minimal JPEG header: SOI, APP0, SOF0 (100 high x 80 wide), EOI
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, ...Array(14).fill(0), 0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x64, 0x00, 0x50, ...Array(12).fill(0), 0xff, 0xd9]);
+
+  it('reads PNG and JPEG sizes and rejects other files', () => {
+    expect(imageSize(png)).toEqual({ w: 1, h: 1, ext: 'png' });
+    expect(imageSize(jpeg)).toEqual({ w: 80, h: 100, ext: 'jpeg' });
+    expect(() => imageSize(Buffer.from('%PDF-1.4 not an image'))).toThrow();
+  });
+
+  it('adds each receipt page after the return in its own narrow-margin section', () => {
+    const out = renderDocx(tpl('return-generic.docx'), buildTemplateData(sampleWarrant(), settings), {}, null, [jpeg, png]);
+    const zip = new PizZip(out);
+    const xml = zip.file('word/document.xml')!.asText();
+    expect(docText(out)).toContain('RETURN OF SEARCH WARRANT');
+    // the return keeps its own section; the receipt pages follow in a second one
+    expect(xml.match(/<w:sectPr[ >]/g)!.length).toBe(2);
+    const tail = xml.slice(xml.lastIndexOf('<w:sectPr'));
+    expect(tail).toMatch(/<w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/);
+    expect(xml.indexOf('r:embed="rIdWrtPage1"')).toBeGreaterThan(xml.indexOf('RETURN OF SEARCH WARRANT'));
+    expect(xml).toContain('r:embed="rIdWrtPage2"');
+    expect(xml.match(/<w:pageBreakBefore\/>/g)!.length).toBe(1);
+    const rels = zip.file('word/_rels/document.xml.rels')!.asText();
+    expect(rels).toContain('Id="rIdWrtPage1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/wrt-page-1.jpeg"');
+    expect(rels).toContain('Target="media/wrt-page-2.png"');
+    expect(zip.file('word/media/wrt-page-1.jpeg')!.asNodeBuffer().equals(jpeg)).toBe(true);
+    const ct = zip.file('[Content_Types].xml')!.asText();
+    expect(ct).toMatch(/Extension="jpeg" ContentType="image\/jpeg"/);
+    expect(ct).toMatch(/Extension="png"/i);
+    // a portrait page is scaled to fit the 7.5 x 10 in area (height-bound), keeping its shape
+    const ext = /<wp:extent cx="(\d+)" cy="(\d+)"\/>[\s\S]*?rIdWrtPage1/.exec(xml)!;
+    expect(Number(ext[1]) / Number(ext[2])).toBeCloseTo(0.8, 3);
+    expect(Number(ext[2])).toBeLessThanOrEqual(10 * 914400);
+  });
+
+  it('leaves the document unchanged without a receipt', () => {
+    const xml = new PizZip(renderDocx(tpl('return-generic.docx'), buildTemplateData(sampleWarrant(), settings))).file('word/document.xml')!.asText();
+    expect(xml).not.toContain('rIdWrtPage');
+    expect(xml.match(/<w:sectPr[ >]/g)!.length).toBe(1);
   });
 });

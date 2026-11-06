@@ -5,7 +5,7 @@ import { join, dirname, extname } from 'node:path';
 import PizZip from 'pizzip';
 import * as repo from './repo';
 import * as tpl from './templates';
-import { renderDocx, fileNameFromPattern, usesSignature, type SignatureImage } from './render';
+import { renderDocx, fileNameFromPattern, usesSignature, imageSize, type SignatureImage } from './render';
 import { getSettings, saveSettings, setSmtpPassword, setPin, verifyPin, setSignature, getSignaturePng } from './settings';
 import { buildTemplateData, sampleWarrant, FIELD_CATALOG } from '../shared/fields';
 import { checkNow, sendReminderNow, desktopNotify } from './reminders';
@@ -61,7 +61,8 @@ async function generate(req: GenerateRequest): Promise<Result<{ filePath?: strin
   const s = getSettings();
   const data = buildTemplateData(merged, s, req.extra);
   const sig = signatureFor(req.sign);
-  const bytes = renderDocx(tpl.readTemplate(t), data, t.mapping, sig);
+  const receipt = receiptFor(req, w.id);
+  const bytes = renderDocx(tpl.readTemplate(t), data, t.mapping, sig, receipt?.pages);
   if (req.preview) return ok({ bytes: new Uint8Array(bytes), sha256: repo.sha256(bytes) });
 
   const fileName = fileNameFromPattern(t.outputPattern, data, `${t.kind}-${w.warrantNumber || w.id}`);
@@ -81,6 +82,10 @@ async function generate(req: GenerateRequest): Promise<Result<{ filePath?: strin
   const attachmentId = tx(() => {
     const id = repo.storeAttachmentBytes(w.id, kind, fileName, bytes, true, t.name);
     if (sig && usesSignature(tpl.readTemplate(t))) repo.audit(w.id, 'sign', `Stored signature applied to ${fileName}`);
+    if (receipt) {
+      const n = receipt.pages.length;
+      repo.audit(w.id, 'receipt', `Property receipt ${receipt.att.originalName} added to ${fileName} (${n} page${n > 1 ? 's' : ''})`, { sha256: receipt.att.sha256 });
+    }
     return id;
   });
   if (t.kind === 'return' && req.markFiled) repo.setStatus(w.id, 'filed');
@@ -88,6 +93,23 @@ async function generate(req: GenerateRequest): Promise<Result<{ filePath?: strin
     repo.updateWarrant(w.id, { notificationServedDate: merged.executedDate || todayISO() }, undefined, 'notice');
   }
   return ok({ filePath: target, attachmentId, sha256: repo.sha256(bytes) });
+}
+
+const MAX_RECEIPT_PAGES = 40;
+const MAX_RECEIPT_BYTES = 120 * 1024 * 1024;
+
+/** Validates the receipt pages sent by the wizard against the warrant's stored attachment. */
+function receiptFor(req: GenerateRequest, warrantId: number) {
+  if (!req.receipt) return null;
+  const att = repo.getAttachment(Number(req.receipt.attachmentId));
+  if (!att || att.warrantId !== warrantId) throw new Error('The property receipt is not attached to this warrant.');
+  const list = Array.isArray(req.receipt.pages) ? req.receipt.pages : [];
+  if (!list.length) throw new Error('The property receipt has no pages to add.');
+  if (list.length > MAX_RECEIPT_PAGES) throw new Error(`The property receipt has more than ${MAX_RECEIPT_PAGES} pages.`);
+  const pages = list.map((p) => Buffer.from(p));
+  if (pages.reduce((n, p) => n + p.length, 0) > MAX_RECEIPT_BYTES) throw new Error('The property receipt is too large to add to the return.');
+  for (const p of pages) imageSize(p); // throws unless PNG/JPEG
+  return { att, pages };
 }
 
 function signatureFor(sign: boolean | undefined): SignatureImage | null {

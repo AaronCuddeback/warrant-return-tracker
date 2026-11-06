@@ -74,6 +74,7 @@ export function renderDocx(
   data: Record<string, unknown>,
   mapping: Record<string, string> = {},
   signature: SignatureImage | null = null,
+  appendPages: (Buffer | Uint8Array)[] = [],
 ): Buffer {
   let zip: PizZip;
   try {
@@ -95,6 +96,7 @@ export function renderDocx(
     throw new Error(friendlyError(e));
   }
   placeSignature(out, signature);
+  if (appendPages.length) appendImagePages(out, appendPages);
   return out.generate({ type: 'nodebuffer', compression: 'DEFLATE' }) as Buffer;
 }
 
@@ -113,14 +115,14 @@ export function pngSize(png: Buffer | Uint8Array): { w: number; h: number } {
   return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) };
 }
 
-function drawingRun(cx: number, cy: number, id: number) {
+function drawingRun(cx: number, cy: number, id: number, relId = SIG_REL_ID, name = 'Officer signature', file = 'signature.png') {
   return (
     `<w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" distT="0" distB="0" distL="0" distR="0">` +
-    `<wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${id}" name="Officer signature"/>` +
+    `<wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${id}" name="${name}"/>` +
     `<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>` +
     `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
-    `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${id}" name="signature.png"/><pic:cNvPicPr/></pic:nvPicPr>` +
-    `<pic:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="${SIG_REL_ID}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+    `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${id}" name="${file}"/><pic:cNvPicPr/></pic:nvPicPr>` +
+    `<pic:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
     `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>` +
     `</a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`
   );
@@ -175,6 +177,99 @@ export function placeSignature(zip: PizZip, sig: SignatureImage | null) {
       zip.file('[Content_Types].xml', ct);
     }
   }
+}
+
+// ---------------- appended pages (property receipt) ----------------
+// Each image becomes one full page after the document, in its own section with narrow margins
+// so a scanned or rendered receipt page prints close to its original size.
+
+/** Pixel size of a PNG or JPEG. Throws for anything else. */
+export function imageSize(img: Buffer | Uint8Array): { w: number; h: number; ext: 'png' | 'jpeg' } {
+  const b = Buffer.from(img);
+  if (b.length > 24 && b.readUInt32BE(0) === 0x89504e47) return { ...pngSize(b), ext: 'png' };
+  if (b.length > 4 && b[0] === 0xff && b[1] === 0xd8) {
+    let i = 2;
+    while (i + 9 < b.length) {
+      if (b[i] !== 0xff) { i++; continue; }
+      const marker = b[i + 1];
+      if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) { i += 2; continue; }
+      const len = b.readUInt16BE(i + 2);
+      // SOF0..SOF15 except DHT (C4), JPG (C8) and DAC (CC)
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+        return { h: b.readUInt16BE(i + 5), w: b.readUInt16BE(i + 7), ext: 'jpeg' };
+      }
+      i += 2 + len;
+    }
+  }
+  throw new Error('Page image must be a PNG or JPEG');
+}
+
+const DEFAULT_SECT =
+  '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>';
+const PAGE_MARGIN = 720; // twips (0.5 in) around appended pages
+const EMU_PER_TWIP = 635;
+
+export function appendImagePages(zip: PizZip, pages: (Buffer | Uint8Array)[]) {
+  const part = 'word/document.xml';
+  let xml = zip.file(part)!.asText();
+  const bodyEnd = xml.lastIndexOf('</w:body>');
+  if (bodyEnd < 0) throw new Error('Template has no document body');
+  const sectStart = xml.lastIndexOf('<w:sectPr', bodyEnd);
+  const hasBodySect = sectStart >= 0 && !/<\/w:(p|tbl)>/.test(xml.slice(sectStart, bodyEnd));
+  let sect = hasBodySect ? xml.slice(sectStart, bodyEnd).trim() : DEFAULT_SECT;
+  if (/^<w:sectPr[^>]*\/>$/.test(sect)) sect = DEFAULT_SECT;
+
+  const attr = (el: string, name: string, fallback: number) => {
+    const m = new RegExp(`<w:${el}\\b[^>]*\\bw:${name}="(\\d+)"`).exec(sect);
+    return m ? Number(m[1]) : fallback;
+  };
+  const pgW = attr('pgSz', 'w', 12240);
+  const pgH = attr('pgSz', 'h', 15840);
+  const boxW = pgW - 2 * PAGE_MARGIN;
+  const boxH = (pgH - 2 * PAGE_MARGIN) * 0.97; // leave room for the paragraph's line box
+
+  // Section 1 (the document as designed) ends with an almost invisible paragraph carrying its settings.
+  const endFirst =
+    `<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/>` +
+    `<w:rPr><w:sz w:val="2"/><w:szCs w:val="2"/></w:rPr>${sect}</w:pPr></w:p>`;
+  // Section 2 (appended pages): same paper size, narrow margins, starts on a new page.
+  const margins = `<w:pgMar w:top="${PAGE_MARGIN}" w:right="${PAGE_MARGIN}" w:bottom="${PAGE_MARGIN}" w:left="${PAGE_MARGIN}" w:header="360" w:footer="360" w:gutter="0"/>`;
+  let second = sect.replace(/<w:type\b[^>]*\/>/g, '').replace(/<w:titlePg\b[^>]*\/>/g, '');
+  second = /<w:pgMar\b[^>]*\/>/.test(second) ? second.replace(/<w:pgMar\b[^>]*\/>/, margins) : second.replace(/(<w:sectPr[^>]*>)/, `$1${margins}`);
+
+  const media: { path: string; relId: string; ext: string; data: Buffer }[] = [];
+  const paras = pages.map((img, i) => {
+    const { w, h, ext } = imageSize(img);
+    const scale = Math.min(boxW / w, boxH / h);
+    const cx = Math.round(w * scale * EMU_PER_TWIP);
+    const cy = Math.round(h * scale * EMU_PER_TWIP);
+    const relId = `rIdWrtPage${i + 1}`;
+    media.push({ path: `media/wrt-page-${i + 1}.${ext}`, relId, ext, data: Buffer.from(img) });
+    return (
+      `<w:p><w:pPr>${i > 0 ? '<w:pageBreakBefore/>' : ''}<w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="center"/></w:pPr>` +
+      drawingRun(cx, cy, 9300 + i, relId, `Attached page ${i + 1}`, `page-${i + 1}.${ext}`) +
+      `</w:p>`
+    );
+  });
+
+  const head = hasBodySect ? xml.slice(0, sectStart) : xml.slice(0, bodyEnd);
+  xml = head + endFirst + paras.join('') + second + xml.slice(bodyEnd);
+  zip.file(part, xml);
+
+  const relsPath = relsPathFor(part);
+  let rels = zip.file(relsPath)?.asText() ??
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+  rels = rels.replace(
+    '</Relationships>',
+    media.map((m) => `<Relationship Id="${m.relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${m.path}"/>`).join('') + '</Relationships>',
+  );
+  zip.file(relsPath, rels);
+  for (const m of media) zip.file(`word/${m.path}`, m.data);
+  let ct = zip.file('[Content_Types].xml')!.asText();
+  for (const ext of new Set(media.map((m) => m.ext))) {
+    if (!new RegExp(`Extension="${ext}"`, 'i').test(ct)) ct = ct.replace('</Types>', `<Default Extension="${ext}" ContentType="image/${ext}"/></Types>`);
+  }
+  zip.file('[Content_Types].xml', ct);
 }
 
 /** True if the rendered template contains a {signature} tag. */

@@ -78,6 +78,7 @@ Built for detectives and forensic examiners: return deadlines and reminders, cou
 | Signature | Scanned image baked into one template | Draw or import once; inserted at `{signature}` in any template (2.1) |
 | Amendments | - | Record amendments with signed copy, due-date change and added scope (2.1) |
 | Inventory | Typed every time | Saved text library with standard provider-data and seized-device language, suggested by warrant type (2.2, 2.3) |
+| Property receipt | - | Attach the receipt PDF/photo; it becomes page 2 of the return with a "See attached" line (2.4) |
 
 ## Using it
 
@@ -96,6 +97,10 @@ Shortcuts: `Ctrl+K` search everything, `Ctrl+N` new warrant, `Ctrl+L` lock.
 ## Saved text (canned inventory language)
 
 The return wizard's **Property taken** step has a **Saved text** menu of reusable wording. It ships with standard language for electronic data produced by a service provider (suggested on service-provider warrants) and for data extracted from seized electronic devices (suggested on device, premises, vehicle and person warrants). One click adds either as an inventory item. Save any item's wording with its bookmark button, and manage the list (and which warrant types each phrase is suggested for) in **Settings > Saved text**.
+
+## Property receipt
+
+In the return wizard's **Property taken** step, **Attach receipt** stores the property receipt (PDF, JPG or PNG) with the warrant, hashed like every other document. Its pages are added to the generated return as page 2 onward, each in its own section with narrow margins so it prints close to full size, and *"See attached Property Receipt, incorporated herein by reference."* is added to the property list (edit the wording in **Settings > Saved text**). The live preview shows the receipt pages, a switch leaves them out, and the audit log records which receipt went into which return. Receipts already on the warrant (Documents tab, type "Property receipt") are offered automatically.
 
 ## Amendments
 

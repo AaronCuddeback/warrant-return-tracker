@@ -104,13 +104,14 @@ export interface WarrantListItem extends Warrant {
   notificationGenerated: boolean;
 }
 
-export type AttachmentKind = 'warrant' | 'amendment' | 'return' | 'notification' | 'affidavit' | 'provider-return' | 'other';
+export type AttachmentKind = 'warrant' | 'amendment' | 'return' | 'receipt' | 'notification' | 'affidavit' | 'provider-return' | 'other';
 
 export const ATTACHMENT_KINDS: { value: AttachmentKind; label: string }[] = [
   { value: 'warrant', label: 'Signed warrant' },
   { value: 'amendment', label: 'Amendment to warrant' },
   { value: 'affidavit', label: 'Affidavit / Statement of PC' },
   { value: 'return', label: 'Return of search warrant' },
+  { value: 'receipt', label: 'Property receipt' },
   { value: 'notification', label: 'Notification' },
   { value: 'provider-return', label: 'Provider return / records' },
   { value: 'other', label: 'Other' },
@@ -184,7 +185,16 @@ export const DEFAULT_PHRASES: SavedPhrase[] = [
     text: 'Digital data and electronic information collected, extracted, recovered, and/or examined from the electronic device(s) authorized for search pursuant to the search warrant and listed as property seized above, within the scope authorized by the same search warrant.',
     types: ['device', 'premises', 'vehicle', 'person'],
   },
+  {
+    id: 'see-receipt',
+    name: 'See attached property receipt',
+    text: 'See attached Property Receipt, incorporated herein by reference.',
+    types: [],
+  },
 ];
+
+/** Built-in phrase added to the property list when a property receipt is attached to a return. */
+export const SEE_RECEIPT_PHRASE_ID = 'see-receipt';
 
 /** IDs of built-in phrases that settings saved before `phraseDefaultsSeen` existed (2.2.0) already offered. */
 const LEGACY_SEEN_DEFAULTS = ['provider-data'];
@@ -328,6 +338,8 @@ export interface GenerateRequest {
   markNoticeServed?: boolean;
   /** Insert the stored signature image at {signature} tags. */
   sign?: boolean;
+  /** Property receipt added after the return: the stored attachment and its pages as PNG/JPEG images. */
+  receipt?: { attachmentId: number; pages: Uint8Array[] };
 }
 
 export interface GeneratedDoc {
