@@ -347,8 +347,11 @@ table.t { width: 100%; border-collapse: separate; border-spacing: 0; }
 .item-row .num { color: var(--muted); font-weight: 700; text-align: right; font-size: 12px; }
 
 /* pdf viewer */
-.viewer { background: var(--bg-2); border: 1px solid var(--border); border-radius: 12px; overflow: auto; height: 100%; min-height: 300px; padding: 14px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.viewer canvas { box-shadow: 0 2px 10px rgba(0, 0, 0, .35); max-width: 100%; background: #fff; }
+.viewer { background: var(--bg-2); border: 1px solid var(--border); border-radius: 12px; overflow: auto; height: 100%; min-height: 300px; padding: 14px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+/* auto margins centre a page that fits and let a zoomed-in page scroll instead of being cut off on the left */
+.viewer > canvas, .viewer > img { flex: none; margin: 0 auto; }
+.viewer canvas { box-shadow: 0 2px 10px rgba(0, 0, 0, .35); background: #fff; }
+.pdf-zoom { min-width: 44px; text-align: center; }
 .docx-host { background: var(--bg-2); border: 1px solid var(--border); border-radius: 12px; overflow: auto; height: 100%; }
 .docx-host .docx-wrapper { background: transparent !important; padding: 16px !important; }
 .docx-host .docx-wrapper > section.docx { box-shadow: 0 2px 12px rgba(0, 0, 0, .35) !important; margin-bottom: 16px !important; }

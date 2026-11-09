@@ -2,54 +2,116 @@ import { useEffect, useRef, useState } from 'react';
 import { renderAsync } from 'docx-preview';
 import { ZoomIn, ZoomOut, Loader2 } from 'lucide-react';
 import { openPdf } from '../lib/pdf';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { Button } from './ui';
+
+/** PDF points to CSS pixels: at 100% a page shows at its printed size. */
+const CSS_UNITS = 96 / 72;
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 4;
+const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
 
 export function PdfViewer({ bytes }: { bytes: Uint8Array }) {
   const host = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1.25);
-  const [pages, setPages] = useState(0);
+  const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
+  /** null = fit the page width to the panel; otherwise 1 = 100% (actual size). */
+  const [zoom, setZoom] = useState<number | null>(null);
+  const [fitZoom, setFitZoom] = useState(1);
+  const [width, setWidth] = useState(0);
   const [err, setErr] = useState('');
+  const current = zoom ?? fitZoom;
+  const zoomBy = (f: number) => setZoom((z) => clampZoom((z ?? fitZoom) * f));
 
+  // Parse the PDF once per file; zooming only re-renders the pages.
   useEffect(() => {
-    let cancelled = false;
+    let alive = true;
+    let loaded: PDFDocumentProxy | null = null;
+    setDoc(null);
+    setErr('');
+    setZoom(null);
+    openPdf(bytes).then(
+      (d) => {
+        if (alive) {
+          loaded = d;
+          setDoc(d);
+        } else void d.loadingTask.destroy();
+      },
+      (e) => alive && setErr(String((e as Error)?.message ?? e)),
+    );
+    return () => {
+      alive = false;
+      if (loaded) void loaded.loadingTask.destroy();
+    };
+  }, [bytes]);
+
+  // Follow the panel width (used by "fit width") and support Ctrl + mouse wheel zoom.
+  useEffect(() => {
     const el = host.current;
     if (!el) return;
-    el.innerHTML = '';
-    setErr('');
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    ro.observe(el);
+    setWidth(el.clientWidth);
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      zoomBy(e.deltaY < 0 ? 1.1 : 1 / 1.1);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      ro.disconnect();
+      el.removeEventListener('wheel', onWheel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [err, fitZoom]);
+
+  const fitWidth = zoom === null ? width : 0; // only re-render on resize while fitting
+  useEffect(() => {
+    const el = host.current;
+    if (!el || !doc || !width) return;
+    let cancelled = false;
     (async () => {
-      try {
-        const doc = await openPdf(bytes);
+      const first = await doc.getPage(1);
+      const base = first.getViewport({ scale: CSS_UNITS });
+      const fit = clampZoom((width - 30) / base.width); // 14px padding each side + border
+      if (cancelled) return;
+      setFitZoom(fit);
+      const z = zoom ?? fit;
+      const ratio = window.devicePixelRatio || 1;
+      // First render shows pages as they arrive; a zoom change swaps all pages at once (no flicker).
+      const progressive = el.childElementCount === 0;
+      const canvases: HTMLCanvasElement[] = [];
+      for (let i = 1; i <= doc.numPages; i++) {
+        const page = await doc.getPage(i);
         if (cancelled) return;
-        setPages(doc.numPages);
-        const ratio = window.devicePixelRatio || 1;
-        for (let i = 1; i <= doc.numPages && !cancelled; i++) {
-          const page = await doc.getPage(i);
-          const vp = page.getViewport({ scale });
-          const canvas = document.createElement('canvas');
-          canvas.width = Math.floor(vp.width * ratio);
-          canvas.height = Math.floor(vp.height * ratio);
-          canvas.style.width = `${Math.floor(vp.width)}px`;
-          el.appendChild(canvas);
-          await page.render({ canvas, viewport: vp, transform: ratio !== 1 ? [ratio, 0, 0, ratio, 0, 0] : undefined }).promise;
-        }
-        void doc.loadingTask.destroy();
-      } catch (e) {
-        if (!cancelled) setErr(String((e as Error)?.message ?? e));
+        const vp = page.getViewport({ scale: z * CSS_UNITS });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(vp.width * ratio);
+        canvas.height = Math.floor(vp.height * ratio);
+        canvas.style.width = `${Math.floor(vp.width)}px`;
+        canvas.style.height = `${Math.floor(vp.height)}px`;
+        await page.render({ canvas, viewport: vp, transform: ratio !== 1 ? [ratio, 0, 0, ratio, 0, 0] : undefined }).promise;
+        if (cancelled) return;
+        if (progressive) el.appendChild(canvas);
+        else canvases.push(canvas);
       }
-    })();
+      if (!progressive) el.replaceChildren(...canvases);
+    })().catch((e) => !cancelled && setErr(String((e as Error)?.message ?? e)));
     return () => {
       cancelled = true;
     };
-  }, [bytes, scale]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc, zoom, fitWidth]);
 
+  const pages = doc?.numPages ?? 0;
   return (
     <div className="col" style={{ height: '100%', gap: 8 }}>
       <div className="row">
         <span className="muted small">{pages ? `${pages} page${pages > 1 ? 's' : ''}` : 'Loading...'}</span>
         <div className="spacer" />
-        <Button size="sm" iconOnly variant="ghost" onClick={() => setScale((s) => Math.max(0.5, s - 0.25))} icon={<ZoomOut size={15} />} title="Zoom out" />
-        <span className="small mono">{Math.round(scale * 80)}%</span>
-        <Button size="sm" iconOnly variant="ghost" onClick={() => setScale((s) => Math.min(3, s + 0.25))} icon={<ZoomIn size={15} />} title="Zoom in" />
+        <Button size="sm" variant={zoom === null ? 'default' : 'ghost'} onClick={() => setZoom(null)} title="Fit the page to the panel width">Fit width</Button>
+        <Button size="sm" iconOnly variant="ghost" onClick={() => zoomBy(1 / 1.25)} disabled={current <= MIN_ZOOM + 0.001} icon={<ZoomOut size={15} />} title="Zoom out (Ctrl + mouse wheel)" />
+        <span className="small mono pdf-zoom">{Math.round(current * 100)}%</span>
+        <Button size="sm" iconOnly variant="ghost" onClick={() => zoomBy(1.25)} disabled={current >= MAX_ZOOM - 0.001} icon={<ZoomIn size={15} />} title="Zoom in (Ctrl + mouse wheel)" />
       </div>
       {err ? <div className="callout danger">Could not display this PDF: {err}</div> : <div className="viewer" ref={host} />}
     </div>
