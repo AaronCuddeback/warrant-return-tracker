@@ -50,6 +50,7 @@ export function defaultSettings(): Settings {
       askWhereToSave: true,
       archiveOnReturn: true,
       dateFormat: 'MM/DD/YYYY',
+      uiScale: 1,
     },
     signature: { hasSignature: false, widthInches: 2, useByDefault: true, updatedAt: null },
     phrases: DEFAULT_PHRASES.map((p) => ({ ...p, types: [...p.types] })),

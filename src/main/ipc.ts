@@ -18,6 +18,7 @@ import { DATA_DIR, PORTABLE, LOGO_FILE, v1DbPath } from './paths';
 import { tx } from './db';
 import { todayISO } from '../shared/dates';
 import { log } from './log';
+import { clampUiScale } from '../shared/types';
 import type { Api, AmendmentInput, AttachmentKind, GenerateRequest, Result, Settings, TemplateInfo, TemplateKind, Warrant, WarrantFilter, WarrantInput, WarrantStatus } from '../shared/types';
 
 type Handlers = { [K in keyof Api]?: (...args: Parameters<Api[K]>) => unknown };
@@ -121,6 +122,11 @@ function receiptsFor(req: GenerateRequest, warrantId: number) {
   return out;
 }
 
+/** Height of the window-controls overlay, matching the app's 40px title bar at the current display size. */
+export function titleBarHeight() {
+  return Math.round(40 * clampUiScale(getSettings().app.uiScale));
+}
+
 function signatureFor(sign: boolean | undefined): SignatureImage | null {
   const s = getSettings();
   if (sign === false || (sign === undefined && !s.signature.useByDefault)) return null;
@@ -141,6 +147,8 @@ const handlers: Handlers = {
   getSettings: () => getSettings(),
   saveSettings: (s: Settings) => {
     try {
+      // Display size is changed only through setUiScale / the keyboard, never by an older settings draft.
+      s.app.uiScale = getSettings().app.uiScale;
       saveSettings(s);
       onSettingsChanged(s);
       return ok();
@@ -490,10 +498,21 @@ const handlers: Handlers = {
     }
   },
   getAgencyLogo: () => (existsSync(LOGO_FILE) ? `data:image/png;base64,${readFileSync(LOGO_FILE).toString('base64')}` : null),
+  setUiScale: (scale: number) => {
+    try {
+      const s = getSettings();
+      s.app.uiScale = clampUiScale(scale);
+      saveSettings(s);
+      onSettingsChanged(s);
+      return ok(s.app.uiScale);
+    } catch (e) {
+      return fail(e);
+    }
+  },
   setTitleBarTheme: async (dark: boolean) => {
     const w = win();
     try {
-      w?.setTitleBarOverlay({ color: dark ? '#0b1220' : '#eef1f6', symbolColor: dark ? '#cbd5e1' : '#1f2937', height: 40 });
+      w?.setTitleBarOverlay({ color: dark ? '#0b1220' : '#eef1f6', symbolColor: dark ? '#cbd5e1' : '#1f2937', height: titleBarHeight() });
     } catch {
       /* not supported */
     }
@@ -536,7 +555,7 @@ async function saveText(name: string, text: string, label: string, ext: string):
   }
 }
 
-const READ_ONLY = /^(appInfo|templateUsesSignature|get|list|read|find|stats|audit|inspect|templateFieldCatalog|verifyPin|pickFile|chooseFolder|extractDocxText|setTitleBarTheme|openDataFolder|showInFolder|openPath|generateDocument)/;
+const READ_ONLY = /^(appInfo|templateUsesSignature|get|list|read|find|stats|audit|inspect|templateFieldCatalog|verifyPin|pickFile|chooseFolder|extractDocxText|setTitleBarTheme|setUiScale|openDataFolder|showInFolder|openPath|generateDocument)/;
 
 export function registerIpc(getWin: () => BrowserWindow | null, settingsChanged: (s: Settings) => void) {
   win = getWin;

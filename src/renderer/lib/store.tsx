@@ -61,7 +61,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void reloadSettings();
     void api.appInfo().then(setInfo);
     reloadLogo();
-    return api.onDataChanged(() => setVersion((v) => v + 1));
+    const offData = api.onDataChanged(() => setVersion((v) => v + 1));
+    const offSettings = api.onSettingsChanged(() => void reloadSettings());
+    return () => {
+      offData();
+      offSettings();
+    };
   }, [reloadSettings, reloadLogo]);
 
   const value = useMemo(

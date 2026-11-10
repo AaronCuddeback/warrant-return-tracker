@@ -12,7 +12,7 @@ export function defaultSettingsForTest(): Settings {
     smtp: { host: '', port: 587, security: 'starttls', username: '', from: '', allowSelfSigned: false, hasPassword: false },
     app: {
       theme: 'dark', minimizeToTray: true, startOnLogin: false, startMinimized: false, lockEnabled: false, lockMinutes: 15, hasPin: false,
-      outputFolder: '', askWhereToSave: true, archiveOnReturn: true, dateFormat: 'MM/DD/YYYY',
+      outputFolder: '', askWhereToSave: true, archiveOnReturn: true, dateFormat: 'MM/DD/YYYY', uiScale: 1,
     },
     signature: { hasSignature: false, widthInches: 2, useByDefault: true, updatedAt: null },
     phrases: [],

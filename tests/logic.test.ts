@@ -4,7 +4,7 @@ import { decideReminders } from '../src/main/reminderLogic';
 import { stripJudgePrefix } from '../src/shared/fields';
 import { buildIcs } from '../src/main/ics';
 import { sampleWarrant } from '../src/shared/fields';
-import { DEFAULT_PHRASES, seedNewDefaultPhrases } from '../src/shared/types';
+import { DEFAULT_PHRASES, seedNewDefaultPhrases, clampUiScale, stepUiScale } from '../src/shared/types';
 
 describe('dates', () => {
   it('parses YYYY-MM-DD as a local date (no UTC off-by-one)', () => {
@@ -129,5 +129,24 @@ describe('saved text defaults', () => {
     const edited = { ...provider, text: 'My wording' };
     const r = seedNewDefaultPhrases([edited], ['provider-data']);
     expect(r.phrases.find((p) => p.id === 'provider-data')!.text).toBe('My wording');
+  });
+});
+
+describe('display size', () => {
+  it('snaps to an offered size and falls back to 100%', () => {
+    expect(clampUiScale(1.5)).toBe(1.5);
+    expect(clampUiScale(1.3)).toBe(1.25);
+    expect(clampUiScale(9)).toBe(2);
+    expect(clampUiScale(0.1)).toBe(0.9);
+    expect(clampUiScale(undefined)).toBe(1);
+    expect(clampUiScale(Number.NaN)).toBe(1);
+  });
+  it('steps up and down through the sizes and resets to 100%', () => {
+    expect(stepUiScale(1, 1)).toBe(1.1);
+    expect(stepUiScale(1.25, 1)).toBe(1.5);
+    expect(stepUiScale(1.5, -1)).toBe(1.25);
+    expect(stepUiScale(2, 1)).toBe(2);
+    expect(stepUiScale(0.9, -1)).toBe(0.9);
+    expect(stepUiScale(1.75, 0)).toBe(1);
   });
 });

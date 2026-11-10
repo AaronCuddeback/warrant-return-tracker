@@ -1,16 +1,16 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage, powerMonitor, session, shell, nativeTheme, protocol, net } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage, powerMonitor, session, shell, nativeTheme, protocol, net, screen } from 'electron';
 import { join, normalize, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ensureDirs, resourcePath } from './paths';
 import { openDb, closeDb } from './db';
-import { getSettings } from './settings';
+import { getSettings, saveSettings } from './settings';
 import { ensureBuiltIns } from './templates';
-import { registerIpc, broadcastChanged } from './ipc';
+import { registerIpc, broadcastChanged, titleBarHeight } from './ipc';
 import { startReminders, stopReminders, checkNow, desktopNotify } from './reminders';
 import { autoBackupIfDue } from './backup';
 import { stats, overrideAuditUser } from './repo';
 import { log } from './log';
-import type { Settings } from '../shared/types';
+import { clampUiScale, stepUiScale, type Settings } from '../shared/types';
 
 const APP_ID = 'org.wrt.warrantreturntracker';
 const DEV_URL = process.env.WRT_DEV_URL;
@@ -93,6 +93,9 @@ function createWindow() {
     },
   });
   win.setMenu(null);
+  win.webContents.on('did-finish-load', () => applyUiScale());
+  // Ctrl + mouse wheel changes the display size (Ctrl + / - / 0 are handled in the renderer).
+  win.webContents.on('zoom-changed', (_e, direction) => changeUiScale(stepUiScale(getSettings().app.uiScale, direction === 'in' ? 1 : -1)));
   if (DEV_URL) void win.loadURL(DEV_URL);
   else void win.loadURL(`${UI_ORIGIN}/index.html`);
 
@@ -114,6 +117,59 @@ function createWindow() {
     win = null;
   });
   win.on('focus', () => win?.flashFrame(false));
+}
+
+function applyUiScale() {
+  if (!win) return;
+  const z = clampUiScale(getSettings().app.uiScale);
+  if (Math.abs(win.webContents.getZoomFactor() - z) > 0.001) win.webContents.setZoomFactor(z);
+  fitWindowToScale(z);
+  // Window buttons follow the zoomed 40px title bar. Set again once the new zoom has applied,
+  // so the page's title-bar area (navigator.windowControlsOverlay) is measured at the new size.
+  const setOverlay = (h: number) => {
+    try {
+      win?.setTitleBarOverlay({ height: h });
+    } catch {
+      /* not supported */
+    }
+  };
+  setOverlay(titleBarHeight());
+  setTimeout(() => {
+    setOverlay(titleBarHeight() + 1);
+    setOverlay(titleBarHeight());
+  }, 120);
+}
+
+/**
+ * The layout needs about 1024 x 640 at 100%. At a larger display size the window grows to keep that
+ * much room (as far as the screen allows), so pages are not cut off on the right.
+ */
+function fitWindowToScale(z: number) {
+  if (!win) return;
+  const { workArea } = screen.getDisplayMatching(win.getBounds());
+  const minW = Math.min(Math.round(1024 * z), workArea.width);
+  const minH = Math.min(Math.round(640 * z), workArea.height);
+  win.setMinimumSize(minW, minH);
+  if (win.isMaximized() || win.isFullScreen()) return;
+  const b = win.getBounds();
+  if (b.width >= minW && b.height >= minH) return;
+  const width = Math.max(b.width, minW);
+  const height = Math.max(b.height, minH);
+  win.setBounds({
+    x: Math.max(workArea.x, Math.min(b.x, workArea.x + workArea.width - width)),
+    y: Math.max(workArea.y, Math.min(b.y, workArea.y + workArea.height - height)),
+    width,
+    height,
+  });
+}
+
+function changeUiScale(next: number) {
+  const s = getSettings();
+  if (clampUiScale(next) === clampUiScale(s.app.uiScale)) return;
+  s.app.uiScale = clampUiScale(next);
+  saveSettings(s);
+  applyUiScale();
+  win?.webContents.send('settings-changed');
 }
 
 function buildTray() {
@@ -207,6 +263,7 @@ async function boot() {
   }
   registerIpc(() => win, (s) => {
     applyLoginItem(s);
+    applyUiScale();
     refreshTray();
   });
   createWindow();

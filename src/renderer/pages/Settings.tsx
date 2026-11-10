@@ -6,7 +6,7 @@ import { navigate } from '../lib/router';
 import { useStore } from '../lib/store';
 import { Button, Field, Input, Select, Textarea, Toggle, confirmDialog } from '../components/ui';
 import { formatDate, isISODate } from '../../shared/dates';
-import { DEFAULT_PHRASES, WARRANT_TYPES, type Settings, type NotifyMethod } from '../../shared/types';
+import { DEFAULT_PHRASES, UI_SCALES, WARRANT_TYPES, clampUiScale, type Settings, type NotifyMethod } from '../../shared/types';
 
 const SECTIONS = [
   { id: 'profile', label: 'Officer & agency', icon: <User size={16} /> },
@@ -16,7 +16,7 @@ const SECTIONS = [
   { id: 'deadlines', label: 'Deadline rules', icon: <CalendarClock size={16} /> },
   { id: 'documents', label: 'Documents', icon: <FileOutput size={16} /> },
   { id: 'security', label: 'Security', icon: <ShieldCheck size={16} /> },
-  { id: 'app', label: 'Appearance & startup', icon: <Monitor size={16} /> },
+  { id: 'app', label: 'Text size & appearance', icon: <Monitor size={16} /> },
   { id: 'data', label: 'Data & backup', icon: <Database size={16} /> },
   { id: 'about', label: 'About', icon: <Info size={16} /> },
 ];
@@ -355,10 +355,38 @@ function SecuritySection({ s, up }: SecProps) {
   );
 }
 
+function DisplaySize() {
+  const { settings, reloadSettings, toast } = useStore();
+  const current = clampUiScale(settings?.app.uiScale);
+  const choose = async (z: number) => {
+    const r = await api.setUiScale(z);
+    if (!r.ok) toast('err', r.error || 'Could not change the display size');
+    await reloadSettings();
+  };
+  return (
+    <Field label="Display size" hint="Makes all text, buttons and screens larger or smaller. It applies right away and is remembered.">
+      <div className="col" style={{ gap: 10 }}>
+        <div className="size-opts" role="radiogroup" aria-label="Display size">
+          {UI_SCALES.map((z) => (
+            <button key={z} type="button" role="radio" aria-checked={current === z} className={`size-opt ${current === z ? 'on' : ''}`} onClick={() => void choose(z)}>
+              <span className="size-a" style={{ fontSize: `${Math.round(11 * z)}px` }}>A</span>
+              <span>{Math.round(z * 100)}%{z === 1 ? ' (normal)' : ''}</span>
+            </button>
+          ))}
+        </div>
+        <div className="muted small">
+          Keyboard: <span className="kbd">Ctrl +</span> larger · <span className="kbd">Ctrl -</span> smaller · <span className="kbd">Ctrl 0</span> normal size. <span className="kbd">Ctrl</span> + mouse wheel works too.
+        </div>
+      </div>
+    </Field>
+  );
+}
+
 function AppSection({ s, up }: SecProps) {
   return (
     <div className="col" style={{ gap: 18 }}>
-      <h3 style={{ margin: 0 }}>Appearance & startup</h3>
+      <h3 style={{ margin: 0 }}>Text size, appearance & startup</h3>
+      <DisplaySize />
       <Field label="Theme">
         <Select value={s.app.theme} onChange={(e) => up((d) => { d.app.theme = e.target.value as Settings['app']['theme']; })} style={{ width: 220 }}>
           <option value="dark">Dark (night shift)</option>
@@ -376,7 +404,7 @@ function AppSection({ s, up }: SecProps) {
       <Toggle checked={s.app.minimizeToTray} onChange={(v) => up((d) => { d.app.minimizeToTray = v; })} label="Keep running in the system tray when the window is closed (needed for reminders)" />
       <Toggle checked={s.app.startOnLogin} onChange={(v) => up((d) => { d.app.startOnLogin = v; })} label="Start automatically when I sign in to Windows" />
       <Toggle disabled={!s.app.minimizeToTray} checked={s.app.startMinimized} onChange={(v) => up((d) => { d.app.startMinimized = v; })} label="Start minimized to the tray" />
-      <div className="muted small">Shortcuts: <span className="kbd">Ctrl K</span> search · <span className="kbd">Ctrl N</span> new warrant · <span className="kbd">Ctrl L</span> lock</div>
+      <div className="muted small">Shortcuts: <span className="kbd">Ctrl K</span> search · <span className="kbd">Ctrl N</span> new warrant · <span className="kbd">Ctrl L</span> lock · <span className="kbd">Ctrl +</span> / <span className="kbd">Ctrl -</span> display size</div>
     </div>
   );
 }

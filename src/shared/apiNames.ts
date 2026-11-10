@@ -1,6 +1,6 @@
 import type { Api } from './types';
 
-type InvokeName = Exclude<keyof Api, 'onNavigate' | 'onDataChanged' | 'onLock' | 'getPathForFile'>;
+type InvokeName = Exclude<keyof Api, 'onNavigate' | 'onDataChanged' | 'onLock' | 'onSettingsChanged' | 'getPathForFile'>;
 
 /** Every IPC method the preload bridge forwards to the main process. */
 export const API_METHODS = [
@@ -15,7 +15,7 @@ export const API_METHODS = [
   'sendTestEmail', 'sendReminderNow', 'runReminderCheck', 'testDesktopNotification', 'exportIcs',
   'exportCsv', 'docketPdf', 'caseSummaryPdf', 'casePacket', 'auditCsv',
   'backupNow', 'exportFullBackup', 'restoreFullBackup', 'importV1', 'chooseFolder', 'openDataFolder', 'showInFolder',
-  'openPath', 'setAgencyLogo', 'getAgencyLogo', 'setTitleBarTheme', 'extractDocxText',
+  'openPath', 'setAgencyLogo', 'getAgencyLogo', 'setTitleBarTheme', 'extractDocxText', 'setUiScale',
 ] as const satisfies readonly InvokeName[];
 
 // Compile-time check that the list is complete.

@@ -440,3 +440,8 @@ table.t { width: 100%; border-collapse: separate; border-spacing: 0; }
 .receipt-row.off { opacity: .6; }
 .receipt-row .toggle { min-width: 0; }
 .receipt-name { word-break: break-all; font-weight: 600; }
+.size-opts { display: flex; flex-wrap: wrap; gap: 8px; }
+.size-opt { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; min-width: 76px; height: 72px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border-2); background: var(--panel-2); color: var(--text); cursor: pointer; font: inherit; font-size: 12px; }
+.size-opt:hover { border-color: var(--accent); }
+.size-opt.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--panel-2)); font-weight: 700; box-shadow: 0 0 0 1px var(--accent) inset; }
+.size-opt .size-a { font-weight: 700; line-height: 1; }

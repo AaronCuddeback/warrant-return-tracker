@@ -3,6 +3,7 @@ build/
 release/
 tests/e2e/out/
 tests/e2e/out-zoom/
+tests/e2e/out-scale/
 src/renderer/public/pdfjs/
 *.log
 

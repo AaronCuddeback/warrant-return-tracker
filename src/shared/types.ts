@@ -214,6 +214,22 @@ export function seedNewDefaultPhrases(phrases: SavedPhrase[], seen: string[] | u
   return { phrases: out, seen: [...seenSet] };
 }
 
+/** Display sizes offered in Settings and by Ctrl + / Ctrl - (1 = 100%). */
+export const UI_SCALES = [0.9, 1, 1.1, 1.25, 1.5, 1.75, 2] as const;
+
+/** The offered display size closest to `n` (100% for anything invalid). */
+export function clampUiScale(n: unknown): number {
+  const v = typeof n === 'number' && Number.isFinite(n) ? n : 1;
+  return UI_SCALES.reduce((best, x) => (Math.abs(x - v) < Math.abs(best - v) ? x : best), 1 as number);
+}
+
+/** Next display size up (+1) or down (-1); 0 resets to 100%. */
+export function stepUiScale(current: number, dir: -1 | 0 | 1): number {
+  if (dir === 0) return 1;
+  const i = UI_SCALES.indexOf(clampUiScale(current) as (typeof UI_SCALES)[number]);
+  return UI_SCALES[Math.min(UI_SCALES.length - 1, Math.max(0, i + dir))];
+}
+
 export interface DueRule {
   id: string;
   name: string;
@@ -267,6 +283,8 @@ export interface Settings {
     askWhereToSave: boolean;
     archiveOnReturn: boolean;
     dateFormat: 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
+    /** Display size: zoom applied to the whole window (1 = 100%). */
+    uiScale: number;
   };
   signature: {
     hasSignature: boolean; // image itself is stored encrypted (Windows DPAPI)
@@ -434,7 +452,9 @@ export interface Api {
   setTitleBarTheme(dark: boolean): Promise<void>;
   extractDocxText(bytes: Uint8Array): Promise<string>;
 
+  setUiScale(scale: number): Promise<Result<number>>;
   onNavigate(cb: (route: string) => void): () => void;
+  onSettingsChanged(cb: () => void): () => void;
   onDataChanged(cb: () => void): () => void;
   onLock(cb: () => void): () => void;
 }

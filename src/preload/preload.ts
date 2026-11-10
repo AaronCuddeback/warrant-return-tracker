@@ -17,6 +17,7 @@ function on(channel: string) {
 api.onNavigate = on('navigate');
 api.onDataChanged = on('data-changed');
 api.onLock = on('lock');
+api.onSettingsChanged = on('settings-changed');
 api.getPathForFile = (file: File) => webUtils.getPathForFile(file);
 
 contextBridge.exposeInMainWorld('wrt', api);

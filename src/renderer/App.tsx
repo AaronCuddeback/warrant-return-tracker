@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { clampUiScale, stepUiScale } from '../shared/types';
 import { LayoutDashboard, FileStack, CalendarDays, FileCog, BarChart3, Settings as SettingsIcon, Plus, Search, Lock, Upload } from 'lucide-react';
 import { StoreProvider, useStore, useData } from './lib/store';
 import { useRoute, navigate } from './lib/router';
@@ -30,8 +31,28 @@ export function App() {
 export const pendingDrop: { path: string | null } = { path: null };
 
 function Root() {
-  const { settings } = useStore();
+  const { settings, reloadSettings } = useStore();
   const [locked, setLocked] = useState<boolean | null>(null);
+
+  // Display size: Ctrl + / Ctrl - / Ctrl 0 (works on every screen, including setup and lock).
+  const scaleRef = useRef(1);
+  useEffect(() => {
+    scaleRef.current = clampUiScale(settings?.app.uiScale);
+  }, [settings]);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const dir = e.key === '=' || e.key === '+' ? 1 : e.key === '-' || e.key === '_' ? -1 : e.key === '0' ? 0 : null;
+      if (dir === null) return;
+      e.preventDefault();
+      const next = stepUiScale(scaleRef.current, dir);
+      if (next === scaleRef.current) return;
+      scaleRef.current = next;
+      void api.setUiScale(next).then(() => reloadSettings());
+    };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [reloadSettings]);
 
   useEffect(() => {
     if (!settings) return;

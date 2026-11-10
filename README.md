@@ -79,6 +79,7 @@ Built for detectives and forensic examiners: return deadlines and reminders, cou
 | Amendments | - | Record amendments with signed copy, due-date change and added scope (2.1) |
 | Inventory | Typed every time | Saved text library with standard provider-data and seized-device language, suggested by warrant type (2.2, 2.3) |
 | Property receipts | - | Attach one or more receipt PDFs/photos; they follow the return as page 2 onward, with a "See attached" line (2.4, 2.5) |
+| Text size | - | Display size 90-200% for the whole app (Settings or Ctrl +/-), remembered (2.6) |
 
 ## Using it
 
@@ -88,7 +89,7 @@ Built for detectives and forensic examiners: return deadlines and reminders, cou
 4. When served, **Mark executed**. For CalECPA warrants, **Generate** the notification.
 5. **Generate return**: confirm dates and the place searched, list the property taken (or paste a list), watch the live preview, save. The warrant is archived (optional) and a hashed copy of the return is kept.
 
-Shortcuts: `Ctrl+K` search everything, `Ctrl+N` new warrant, `Ctrl+L` lock.
+Shortcuts: `Ctrl+K` search everything, `Ctrl+N` new warrant, `Ctrl+L` lock, `Ctrl +` / `Ctrl -` / `Ctrl 0` text size (also **Settings > Text size & appearance**).
 
 ## Signature
 
